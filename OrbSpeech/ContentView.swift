@@ -15,18 +15,19 @@ struct ContentView: View {
             background
                 .ignoresSafeArea()
 
+            RumiOrbView(background: background, state: .thinking)
+                .ignoresSafeArea()
+
             VStack(spacing: 44) {
                 Spacer()
-
-                RumiOrbView(background: background, state: .listening(0.9))
-                    .frame(width: 190, height: 190)
+                    .frame(height: 250)
 
                 VStack(spacing: 18) {
                     Text("OrbSpeech")
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("listening 0.9")
+                    Text("thinking")
                         .font(.system(.body, design: .monospaced))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.46))
@@ -42,6 +43,7 @@ struct ContentView: View {
 private enum RumiOrbState {
     case idle
     case listening(Double)
+    case thinking
 }
 
 private struct RumiOrbView: View {
@@ -76,6 +78,8 @@ private struct RumiOrbView: View {
             "Rumi idle orb"
         case .listening:
             "Rumi listening orb"
+        case .thinking:
+            "Rumi thinking orb"
         }
     }
 
@@ -97,6 +101,14 @@ private struct RumiOrbView: View {
                 .color(base),
                 .color(edge),
                 .float(min(max(frequency, 0.0), 1.0))
+            )
+        case .thinking:
+            ShaderLibrary.rumi_thinking(
+                .float2(size),
+                .float(time),
+                .float(scale),
+                .color(base),
+                .color(edge)
             )
         }
     }
