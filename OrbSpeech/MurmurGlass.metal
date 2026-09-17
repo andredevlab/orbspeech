@@ -140,16 +140,6 @@
 // is not a dial. formScale scales the interior forms, which is where it means
 // something anyway.
 //
-// PLAY, AND WHERE IT LIVES. From the second batch on every hero performs one
-// gesture: a thing the presence does now and then and then lets go of. Nebula
-// buries a glint in its weather, prism's fan opens wider than it otherwise ever
-// does and sends a pulse down the shafts, duet's pair draws close and hurries
-// once around each other, and still's single crossing glint IS its whole
-// species. mh_flourish times them -- slots with a hashed onset inside each, so
-// the gaps are never equal and there is nothing for the eye to count -- and it
-// is deterministic, because a gesture that depends on when the app happened to
-// start is a gesture the screenshot rig cannot reproduce.
-//
 // TWO GROUNDS, ONE FAMILY. The shader is handed the ground it will sit on, and
 // on a light one nearly every rule above turns over. There is nowhere brighter
 // than paper for energy to go, so the rail descends instead of climbing: content
@@ -165,11 +155,6 @@
 // At paper = 0 every one of those terms is algebraically the identity, which is
 // how the twelve heroes reviewed on ink are unchanged to the bit.
 //
-// EPOCH IS IGNORED. None of the twelve is an arc species: a glass presence is
-// always on, it does not arrive and settle. Every hero is complete, alive and
-// worth a screenshot at level = 0, activity = 0 and state = idle, because that
-// is the frame a gallery catches and the state a silent app sits in for hours.
-//
 // COPIED HELPERS. Cross-file Metal linkage is not guaranteed, so the kit is
 // copied out of FieldLab.metal and FieldPackPour.metal (by way of
 // MurmurPresence.metal, this pack's conventions exemplar) VERBATIM under an mh_
@@ -178,8 +163,7 @@
 //   mh_hash, mh_grad3, mh_noise3,
 //   mh_srgb_to_linear, mh_linear_to_srgb, mh_linear_to_oklab,
 //   mh_oklab_to_linear, mh_lch, MHPalette, mh_palette,
-//   mh_out, mh_knee, mh_tier, mh_lit, mh_aa, mh_spin,
-//   mh_live, mh_small, mh_state
+//   mh_out, mh_knee, mh_tier, mh_lit, mh_spin, mh_small
 //
 // Their comments come with them: the reasoning is the part worth carrying.
 // mh_shade is the copied rail plus the documented hue rotation above, and
@@ -549,24 +533,6 @@ static inline float3 mh_lit(MHPalette pal, float e, float glow,
     return col * (1.0 + emis * G * (1.0 - pal.paper) * smoothstep(0.72, 1.0, tRail));
 }
 
-/// THE ANTI-ALIAS GATE. Where a species puts full amplitude on a CHOSEN
-/// frequency -- aura's shimmer along the ribbons, droplet's surface granulation
-/// -- that frequency has a floor: below about two pixels a cycle it stops being
-/// a form and becomes moire, which at 18 pt with the form scale wound down is a
-/// real setting and not a theoretical one.
-///
-/// `cycles` is the structure's wavenumber in radians per uv unit, and the frame
-/// gives the rest: one uv unit is min(size) points, which is min(size) *
-/// pixelScale pixels. The gate returns 1 while the structure is comfortably
-/// resolved and eases its CONTRIBUTION to nothing as it approaches a third of a
-/// cycle per pixel, so structure that can no longer be drawn honestly becomes
-/// its own soft average instead of a sparkle.
-static inline float mh_aa(float cycles, float2 size, float pixelScale) {
-    float px = max(min(size.x, size.y), 1.0) * max(pixelScale, 1.0);
-    float perPixel = max(cycles, 0.0) / (6.2831853 * px);
-    return 1.0 - smoothstep(0.16, 0.36, perPixel);
-}
-
 /// THE CONTAINMENT. fl_edge's job, done for a circle instead of a screen.
 ///
 /// The view clips these indicators to a Circle at length(uv) = 0.5, and a clip
@@ -591,58 +557,6 @@ static inline float3 mh_spin(float3 p, float ay, float ax) {
     return float3(q.x, cb * q.y - sb * q.z, sb * q.y + cb * q.z);
 }
 
-/// ROLL. The third rotation, and aura needed it badly enough to be worth a kit
-/// function.
-///
-/// mh_spin turns a body about the vertical and tips it toward the viewer, which
-/// is everything a SPHERE ever needs -- a sphere has no orientation to give
-/// away. A loop inside one does. Yaw and tilt alone leave every loop projecting
-/// to an ellipse whose long axis is still horizontal on screen, so three ribbons
-/// at three yaws and three tilts came out as three horizontal swooshes stacked
-/// on each other, which is one swoosh. Rolling each ribbon about the view axis
-/// first is the missing degree of freedom: it turns the projected ellipse, and
-/// three ribbons at three rolls cross each other at three angles instead of
-/// lying down together.
-static inline float3 mh_roll(float3 p, float a) {
-    float c = cos(a), s = sin(a);
-    return float3(c * p.x - s * p.y, s * p.x + c * p.y, p.z);
-}
-
-/// THE LIVE SIGNALS, CONDITIONED ONCE.
-///
-/// The host hands two raw scalars and every species reads them through here,
-/// so "loud" and "busy" mean the same thing across the family and a person
-/// switching styles in the lab is comparing designs rather than gain staging.
-///
-/// THE CURVE. A microphone level that is mapped linearly spends most of its
-/// travel in the top quarter and reads as a gate: nothing, nothing, nothing,
-/// everything. Ordinary speech sits low and its interesting structure is down
-/// there, so voice is raised to 0.65 -- a little stronger than a square root --
-/// which puts a normal speaking level near two thirds of the response and leaves
-/// real headroom above it for emphasis. Cadence gets a gentler 0.85: typing rate
-/// arrives already smoothed by the host and does not need the same expansion.
-///
-/// THE STATE WEIGHTS. Voice is at full strength in LISTENING, which is where
-/// level does its deepest work, and at 0.55 elsewhere -- a person talking over a
-/// thinking assistant is still worth acknowledging, just not as though nothing
-/// else were going on. Cadence is at full strength in THINKING and RESPONDING,
-/// where a token stream is the thing actually happening, and at 0.6 elsewhere.
-struct MHLive {
-    float voice;   // level, shaped and state-weighted
-    float pace;    // activity, shaped and state-weighted
-};
-
-static MHLive mh_live(float level, float activity, float stateIndex) {
-    MHLive o;
-    float L = clamp(level, 0.0, 1.0);
-    float A = clamp(activity, 0.0, 1.0);
-    float listening = (stateIndex > 0.5 && stateIndex < 1.5) ? 1.0 : 0.0;
-    float working   = (stateIndex > 1.5 && stateIndex < 3.5) ? 1.0 : 0.0;
-    o.voice = pow(L, 0.65) * mix(0.55, 1.00, listening);
-    o.pace  = pow(A, 0.85) * mix(0.60, 1.00, working);
-    return o;
-}
-
 /// THE SIZE DIAL. One number, 1 at 18 pt and 0 at 120 pt and above, and every
 /// species spends it the same way: structure counts down, strokes thicken.
 ///
@@ -651,56 +565,6 @@ static MHLive mh_live(float level, float activity, float stateIndex) {
 /// pt chip is a small object that happens to be bigger than the smallest one.
 static inline float mh_small(float2 size) {
     return 1.0 - smoothstep(16.0, 88.0, max(min(size.x, size.y), 1.0));
-}
-
-/// THE STATE READ, shared by all twelve species.
-///
-/// Two of the six states get an in-shader design; the rest are carried by the
-/// per-state parameter sets the Swift layer interpolates, which is the right
-/// division of labour -- a dial change is a dial change and does not belong in a
-/// branch here.
-///
-/// SUCCESS (index 4) is this family's flash and it is always the same physics:
-/// THE INTERIOR IGNITES AND SETTLES. `complete` is the breath of arrival: in
-/// over about a third of a second, out over the rest of 1.2, on a curve whose
-/// ends are flat so nothing snaps. `sweep` is the same window read as a
-/// position, 0 to 1 over 0.95 s, and it is what each species runs the ignition
-/// ALONG -- around aura's ribbons, out from droplet's core, once round limn's
-/// rim, all the way along comet's orbit. `settled` is what is left afterwards
-/// and holds for as long as the state does: the presence a little brighter and a
-/// little more resolved than it was.
-///
-/// The light in a success is NOT an overlay. Every species multiplies its own
-/// interior energy by (1 + complete), which brightens exactly what is already
-/// there and leaves the dark dark: the surge travels through the species' own
-/// structure because it IS the species' own structure, scaled.
-///
-/// RESPONDING (index 3) is decisive drive: the interior stops casting about and
-/// acquires a DIRECTION, continuously, for as long as the state holds. `drive`
-/// ramps in over half a second so entering the state is a lean and not a jolt.
-struct MHState {
-    float complete;   // success: the ignition, one breath
-    float sweep;      // success: where the ignition has travelled to, 0...1
-    float settled;    // success: what is left after it
-    float drive;      // responding: directional urgency, held
-};
-
-static MHState mh_state(float stateIndex, float stateTau) {
-    MHState o;
-    o.complete = 0.0; o.sweep = 0.0; o.settled = 0.0; o.drive = 0.0;
-    float tau = max(stateTau, 0.0);
-    if (stateIndex > 3.5 && stateIndex < 4.5) {
-        float a = clamp(tau / 1.20, 0.0, 1.0);
-        o.complete = smoothstep(0.0, 0.30, a) * (1.0 - smoothstep(0.36, 1.0, a));
-        o.settled  = smoothstep(0.30, 1.05, a);
-        // The sweep is eased at both ends: a flash that starts at full speed and
-        // stops dead is a wipe, and a wipe is a UI transition rather than an
-        // arrival travelling through a material.
-        o.sweep    = smoothstep(0.0, 1.0, clamp(tau / 0.95, 0.0, 1.0));
-    } else if (stateIndex > 2.5 && stateIndex < 3.5) {
-        o.drive = smoothstep(0.0, 0.55, tau);
-    }
-    return o;
 }
 
 // MARK: - The motion law
@@ -735,10 +599,7 @@ static inline float mh_drift(float t, float rate, float wobble, float lane) {
 }
 
 /// One lane of the hash, for the gesture clock. Copied.
-static inline float mh_hash1(float cell, float lane) {
-    return float(mh_hash(uint3(uint(int(cell) + 32768), uint(int(lane) + 32768), 0x9E3779B9u)) >> 8)
-         * (1.0 / 16777216.0);
-}
+
 
 /// THE FLOURISH CLOCK, and it is the pack's play mechanism.
 ///
@@ -770,17 +631,7 @@ static inline float mh_hash1(float cell, float lane) {
 /// The random is what each hero spends on WHERE the gesture happens, so no two
 /// occurrences are in the same place, and it is stable for the whole gesture
 /// because it is hashed from the slot rather than from the time.
-static float4 mh_flourish(float t, float lane, float slotLen) {
-    float SLOT = max(slotLen, 1.0);
-    float slot = floor(t / SLOT);
-    float local = t - slot * SLOT;
-    float start = 0.9 + (SLOT * 0.28) * mh_hash1(slot, lane);
-    float dur   = SLOT * (0.24 + 0.16 * mh_hash1(slot + 811.0, lane));
-    float u = (local - start) / dur;
-    float sn = sin(3.14159265 * clamp(u, 0.0, 1.0));
-    float env = (u <= 0.0 || u >= 1.0) ? 0.0 : sn * sn;
-    return float4(env, clamp(u, 0.0, 1.0), mh_hash1(slot + 1607.0, lane), dur);
-}
+
 
 /// THE BREATH, and the rule is that the body is never at the top or the bottom
 /// of it. Two periods, 9.4 s and 14.7 s, whose ratio is irrational enough that
@@ -1412,28 +1263,9 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
 // and at spread 0 it degrades to two identical lamps, which is a duet with both
 // parts written in unison.
 //
-// LEVEL SHIFTS THE BALANCE, and this is the reading of `level` the species
-// exists for. At rest the glow sways slowly between the two -- turn and turn
-// about, the conversation ticking over. As voice comes up it pushes decisively
-// toward one of them: somebody has the floor. Not both brighter, which would say
-// nothing; brighter THERE and dimmer here, which says who is speaking.
-//
-// ACTIVITY TIGHTENS AND QUICKENS the orbit a little, the way a busy exchange
-// closes the distance between two people.
-//
-// RESPONDING BRAIDS THEM. The separation collapses by a third, the rate nearly
-// doubles, and a weave switches on: each body is displaced along the orbit's own
-// normal by a term running at three times the orbital rate and in opposite
-// signs, so they wind around each other rather than merely circling faster. A
-// braid is two things becoming one line without merging, which is exactly what a
-// conversation in full flow looks like.
-//
-// THE GESTURE: every eight seconds or so the pair draws close and hurries once
-// around each other before easing back out. Play, in this species' own grammar.
-//
-// SUCCESS: they rush together, the interior ignites as they meet, and they ease
-// apart again brighter. The pattern is two things circling; completing it is
-// their arrival at the same place.
+// THINKING DEFAULT. This copy intentionally removes the other gallery states,
+// live signals and gesture clock. The glow balance only sways slowly between
+// the two lights, which is the default "conversation ticking over" read.
 //
 // SIZE: at 18 pt the orbit opens from 0.41 to 0.56 of the body (a tight orbit in
 // a small bead is a wobble, not two objects), both bodies grow by half, and the
@@ -1444,21 +1276,17 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
     float2 position, half4 currentColor, float2 size, float time, float pixelScale,
     half4 inkColor, half4 toneColor,
     float hueShift, float formScale, float speed, float depth, float glow,
-    float c0, float c1, float c2, float c3, float epoch,
-    float stateIndex, float stateTau, float level, float activity,
     float2 tilt, half4 tone2
 ) {
     float2 uv = (position - 0.5 * size) / max(min(size.x, size.y), 1.0);
     float S = max(formScale, 0.10);
     float t = time * max(speed, 0.0);
 
-    float sepK    = clamp(c0, 0.0, 1.0);   // how far apart they hold
-    float orbitK  = clamp(c1, 0.0, 1.0);   // how fast they go round
-    float ratioK  = clamp(c2, 0.0, 1.0);   // how alike in size they are
-    float spreadK = clamp(c3, 0.0, 1.0);   // the two voices
+    float sepK    = 0.5;   // how far apart they hold
+    float orbitK  = 0.5;   // how fast they go round
+    float ratioK  = 0.5;   // how alike in size they are
+    float spreadK = 0.6;   // the two voices
 
-    MHState st = mh_state(stateIndex, stateTau);
-    MHLive live = mh_live(level, activity, stateIndex);
     float small = mh_small(size);
     float px = 1.0 / (max(min(size.x, size.y), 1.0) * max(pixelScale, 1.0) * MH_R);
 
@@ -1469,8 +1297,6 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
     float3 rd = mh_look(V, b.N, tilt);
     float L = mh_exit(b.P, rd);
 
-    float4 fl = mh_flourish(t, 6.0, 8.3);
-
     // THE PLANE. Tilt bounded away from face-on and edge-on, wobbling slowly, and
     // precessing so the pair's geometry never repeats.
     float lean = 0.62 + 0.20 * sin(t * 0.037);
@@ -1479,19 +1305,15 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
     float3 e2 = mh_spin(float3(0.0, sin(lean), cos(lean)), prec, 0.0);
     float3 nrm = cross(e1, e2);
 
-    // Separation. Cadence closes it a little, responding a lot, the gesture
-    // briefly, and success all the way in.
-    float r = mix(0.30, 0.50, sepK) * mix(1.0, 1.36, small) * S
-            * (1.0 - 0.14 * live.pace) * (1.0 - 0.34 * st.drive)
-            * (1.0 - 0.30 * fl.x) * (1.0 - 0.62 * st.complete);
+    // Separation at the default thinking values.
+    float r = mix(0.30, 0.50, sepK) * mix(1.0, 1.36, small) * S;
 
-    float rate = (0.40 + 0.55 * orbitK)
-               * (1.0 + 0.55 * live.pace + 0.90 * st.drive + 0.85 * fl.x);
+    float rate = 0.40 + 0.55 * orbitK;
     float psi = mh_drift(t, rate, 0.40, 3.0);
 
     // THE BRAID: a weave along the orbit's normal, opposite in sign for the two,
     // running at three times the orbital rate. Off at rest, on under drive.
-    float braid = (0.16 * st.drive + 0.06 * fl.x) * S * sin(psi * 3.0);
+    float braid = 0.0;
 
     float3 spoke = cos(psi) * e1 + sin(psi) * e2;
     float3 A =  r * spoke + nrm * braid;
@@ -1504,7 +1326,7 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
 
     // THE BALANCE. A slow sway at rest, pushed decisively by voice.
     float sway = 0.5 + 0.15 * sin(mh_drift(t, 0.21, 0.50, 7.0));
-    float bal = clamp(sway + 0.40 * live.voice, 0.06, 0.94);
+    float bal = clamp(sway, 0.06, 0.94);
     float brA = 2.0 * bal;
     float brB = 2.0 * (1.0 - bal);
 
@@ -1526,11 +1348,11 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
     float occA = 1.0, occB = 1.0;
     if (sA < sB) { occB = exp(-2.40 * coreA); } else { occA = exp(-2.40 * coreB); }
 
-    float flare = 1.0 + 1.15 * st.complete;
+    float flare = 1.0;
     float eA = (coreA * 1.05 + mh_scatter(argA, 0.30) * visA) * brA * occA * flare;
     float eB = (coreB * 1.05 + mh_scatter(argB, 0.30) * visB) * brB * occB * flare;
 
-    // The medium, and the ignition that travels out through it on success.
+    // The medium.
     float medAmt = mix(0.085, 0.044, small);
     float2 acc = float2(0.0);
     float trans = 1.0;
@@ -1542,24 +1364,18 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
         if (fade <= 0.001) continue;
 
         float med = mh_medium(p, t, 2.2 / S) * medAmt;
-        float e = med;
-        if (st.complete > 0.001) {
-            float sr = (length(p) - mix(0.02, 1.0, st.sweep)) / 0.22;
-            e += st.complete * 0.26 * exp(-sr * sr);
-        }
-        acc.x += e * trans * ds;
-        trans *= exp(-(2.20 * e + MH_EXT) * ds);
+        acc.x += med * trans * ds;
+        trans *= exp(-(2.20 * med + MH_EXT) * ds);
     }
 
-    float interior = (acc.x * 3.60 + eA + eB) * b.m * mh_transmit(b.fres)
-                   * (1.0 + 0.20 * st.settled);
+    float interior = (acc.x * 3.60 + eA + eB) * b.m * mh_transmit(b.fres);
 
     // THE TWO VOICES: A warm of the anchor, B cool of it, weighted by which body
     // this pixel is actually seeing.
     float hueW = (eA * 0.85 - eB * 1.0);
     float hue = (interior > 1e-4 ? hueW / max(eA + eB, 1e-4) : 0.0) * spreadK * MH_SPREAD;
 
-    MHSurface sf = mh_surface(b, t, small, inkColor, tilt, 0.80 + 0.35 * live.voice, 0.42, 0.15);
+    MHSurface sf = mh_surface(b, t, small, inkColor, tilt, 0.80, 0.42, 0.15);
 
     float e = interior + sf.rim + sf.spec + sf.glow;
     float hueMix = hue * (eA + eB) / max(e, 1e-4);
@@ -1568,4 +1384,3 @@ static inline half4 mh_present(float body, float spec, float contact, float hue,
     return mh_present(e - sf.spec - sf.glow, sf.spec, sf.glow, hueMix,
                        uv, pal, glow, inkColor, position, pixelScale);
 }
-
