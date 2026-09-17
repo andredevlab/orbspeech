@@ -1,6 +1,6 @@
 import Foundation
 
-enum OrbState {
+enum OrbState: Equatable {
     case idle
     case listening(Double)
     case thinking

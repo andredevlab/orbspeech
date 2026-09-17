@@ -6,6 +6,7 @@ struct RumiOrbView: View {
 
     @Environment(\.displayScale) private var displayScale
     @State private var birth = Date.now
+    @State private var thinkingBirth = Date.now
 
     var body: some View {
         let scale = displayScale
@@ -21,12 +22,18 @@ struct RumiOrbView: View {
                     content.colorEffect(
                         shaderArguments(size: proxy.size,
                                         time: time,
+                                        thinkingTime: thinkingBirth.distance(to: context.date),
                                         scale: scale,
                                         base: base,
                                         edge: edge)
                     )
                 }
                 .accessibilityLabel(accessibilityLabel)
+        }
+        .onChange(of: state) { _, newState in
+            if case .thinking = newState {
+                thinkingBirth = Date.now
+            }
         }
     }
 
@@ -43,6 +50,7 @@ struct RumiOrbView: View {
 
     nonisolated private func shaderArguments(size: CGSize,
                                              time: TimeInterval,
+                                             thinkingTime: TimeInterval,
                                              scale: Double,
                                              base: Color,
                                              edge: Color) -> Shader {
@@ -67,7 +75,7 @@ struct RumiOrbView: View {
         case .thinking:
             ShaderLibrary.rumi_thinking(
                 .float2(size),
-                .float(time),
+                .float(thinkingTime),
                 .float(scale),
                 .color(base),
                 .color(edge)

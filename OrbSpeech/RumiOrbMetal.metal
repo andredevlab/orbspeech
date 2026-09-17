@@ -38,11 +38,6 @@ static inline float rumi_ease(float value) {
     return t * t * (3.0 - 2.0 * t);
 }
 
-static inline float rumi_bounce(float value) {
-    float t = clamp(value, 0.0, 1.0);
-    return sin(t * M_PI_F);
-}
-
 static inline half4 rumi_orb(
     float2 position,
     half4 currentColor,
@@ -118,7 +113,7 @@ static inline half4 rumi_orb(
     half4 edgeColor
 ) {
     float side = 190.0;
-    float2 startCenter = float2(size.x * 0.5, size.y * 0.38);
+    float2 startCenter = size * 0.5;
     float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5);
     float px = 1.0 / (side * max(pixelScale, 1.0));
 
