@@ -8,15 +8,17 @@
 import SwiftUI
 
 struct ContentView: View {
+    private let background = Color(red: 0.1, green: 0.15, blue: 0.04)
+
     var body: some View {
         ZStack {
-            Color(red: 0.05, green: 0.045, blue: 0.04)
+            background
                 .ignoresSafeArea()
 
             VStack(spacing: 44) {
                 Spacer()
 
-                DuetMetalOrb()
+                RumiOrbView(background: background)
                     .frame(width: 190, height: 190)
 
                 VStack(spacing: 18) {
@@ -24,7 +26,7 @@ struct ContentView: View {
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text("two lights orbiting each other inside the conversation")
+                    Text("idle edge wave")
                         .font(.system(.body, design: .monospaced))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.white.opacity(0.46))
@@ -37,48 +39,34 @@ struct ContentView: View {
     }
 }
 
-private struct DuetMetalOrb: View {
+private struct RumiOrbView: View {
+    let background: Color
+
     @Environment(\.displayScale) private var displayScale
     @State private var birth = Date.now
 
     var body: some View {
         let scale = displayScale
-        let ink = Color(red: 0.05, green: 0.045, blue: 0.04)
+        let base = Color(red: 0.02, green: 0.07, blue: 0.24)
+        let edge = Color(red: 0.20, green: 0.45, blue: 1.0)
 
-        TimelineView(.periodic(from: birth, by: 0.40 / 60.0)) { context in
+        TimelineView(.periodic(from: birth, by: 1.0 / 60.0)) { context in
             let time = birth.distance(to: context.date)
 
             Rectangle()
-                .fill(ink)
+                .fill(background)
                 .visualEffect { content, proxy in
                     content.colorEffect(
-                        ShaderLibrary.mh_duet(
+                        ShaderLibrary.rumi_idle(
                             .float2(proxy.size),
                             .float(time),
                             .float(scale),
-                            .color(ink),
-                            .color(Color(red: 0.43, green: 0.39, blue: 0.91)),
-                            .float(0.0),
-                            .float(1.0),
-                            .float(0.82),
-                            .float(0.78),
-                            .float(1.0),
-                            .float(0.5),
-                            .float(0.5),
-                            .float(0.5),
-                            .float(0.6),
-                            .float(0.0),
-                            .float(2.0),
-                            .float(2.2),
-                            .float(0.0),
-                            .float(0.32),
-                            .float2(CGPoint.zero),
-                            .color(Color(red: 0.12, green: 0.48, blue: 1.0))
+                            .color(base),
+                            .color(edge)
                         )
                     )
                 }
-                .clipShape(Circle())
-                .accessibilityLabel("Duet orb")
+                .accessibilityLabel("Rumi idle orb")
         }
     }
 }
