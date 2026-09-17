@@ -120,75 +120,43 @@ static inline half4 rumi_orb(
     float side = 190.0;
     float2 startCenter = float2(size.x * 0.5, size.y * 0.38);
     float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5);
-    float2 particleOrigin = float2(0.0, size.y * 0.5);
     float px = 1.0 / (side * max(pixelScale, 1.0));
 
     float cycle = fmod(time, 7.0);
     float travelOut = rumi_ease(cycle);
-    float emerge = rumi_ease((cycle - 3.0) / 2.0);
+    float reform = rumi_ease((cycle - 3.0) / 2.0);
     float travelBack = rumi_ease((cycle - 5.0) / 2.0);
-    float particlesVisible = cycle < 1.0 ? travelOut : (cycle < 3.0 ? 1.0 : (cycle < 5.0 ? 1.0 - emerge : 0.0));
-    float orbVisible = cycle < 1.0 ? 1.0 - travelOut : (cycle < 3.0 ? 0.0 : (cycle < 5.0 ? emerge : 1.0));
+    float morph = cycle < 1.0 ? travelOut : (cycle < 3.0 ? 1.0 : (cycle < 5.0 ? 1.0 - reform : 0.0));
 
-    float2 orbCenter = mix(startCenter, cornerCenter, travelOut);
-    orbCenter = cycle >= 5.0 ? mix(cornerCenter, startCenter, travelBack) : orbCenter;
+    float2 shapeCenter = mix(startCenter, cornerCenter, travelOut);
+    shapeCenter = cycle >= 5.0 ? mix(cornerCenter, startCenter, travelBack) : shapeCenter;
+    shapeCenter = mix(shapeCenter, float2(-10.0, size.y * 0.5), morph);
 
-    float2 orbUv = (position - orbCenter) / side;
-    float radius = length(orbUv);
-    float angle = atan2(orbUv.y, orbUv.x);
-    float wave = rumi_wave(angle, time);
+    float2 circleScale = float2(side, side);
+    float2 plankScale = float2(34.0, size.y * 0.30);
+    float2 shapeScale = mix(circleScale, plankScale, morph);
+    float2 uv = (position - shapeCenter) / shapeScale;
+
+    float radius = length(uv);
+    float angle = atan2(uv.y, uv.x);
+    float wave = mix(
+        rumi_wave(angle, time),
+        sin(uv.y * 19.0 + time * 3.4) * 1.1 + sin(uv.y * 31.0 - time * 2.1) * 0.55,
+        morph
+    );
     float grain = rumi_noise(float2(cos(angle), sin(angle)) * 3.4 + time * 0.18);
-    float orbRadius = 0.315 + wave * 0.030 + (grain - 0.5) * 0.012;
-    float body = (1.0 - smoothstep(orbRadius, orbRadius + px * 2.0, radius)) * orbVisible;
-    float rim = (1.0 - smoothstep(0.0, px * 7.0, abs(radius - orbRadius))) * orbVisible;
-    float innerShade = smoothstep(0.03, orbRadius, radius);
-
-    float particleMask = 0.0;
-    float particleGlow = 0.0;
-    for (int i = 0; i < 100; i++) {
-        float index = float(i);
-        float seed = rumi_hash(float2(index, index * 2.31));
-        float row = index / 99.0;
-        float randomY = rumi_hash(float2(index * 1.7, 8.3));
-        float gaussianY = clamp(0.5 + (randomY - 0.5) * 0.17, 0.35, 0.65);
-        float lineY = mix(0.35, 0.65, row);
-        float distributionMix = rumi_hash(float2(index * 2.9, 4.1)) < 0.74 ? 1.0 : 0.0;
-        float normalizedY = mix(lineY, gaussianY, distributionMix);
-        float2 particleRest = float2(
-            mix(0.0, 28.0, rumi_hash(float2(index * 3.1, 5.7))),
-            normalizedY * size.y
-        );
-
-        float outward = cycle < 1.0 ? rumi_bounce(cycle) : 0.0;
-        float inward = cycle >= 3.0 && cycle < 5.0 ? rumi_bounce((cycle - 3.0) / 2.0) : 0.0;
-        float bounce = max(outward, inward);
-        float wobbleX = sin(time * mix(3.4, 6.2, seed) + index) * mix(2.0, 7.0, bounce);
-        float wobbleY = cos(time * mix(2.6, 5.7, seed) + index * 1.7) * mix(2.5, 8.0, bounce);
-        float2 particleCenter = mix(particleOrigin, particleRest, particlesVisible) + float2(wobbleX, wobbleY);
-        particleCenter = mix(particleCenter, particleOrigin, emerge);
-
-        float particleRadius = mix(3.0, 9.0, rumi_hash(float2(index * 1.7, 3.9)));
-        float particleDistance = length(position - particleCenter);
-        float particle = 1.0 - smoothstep(particleRadius, particleRadius + 2.0, particleDistance);
-        float glow = 1.0 - smoothstep(0.0, particleRadius * 3.2, particleDistance);
-        particleMask = max(particleMask, particle * particlesVisible);
-        particleGlow = max(particleGlow, glow * particlesVisible);
-    }
+    float shapeRadius = mix(0.315, 1.0, morph) + wave * mix(0.030, 0.035, morph) + (grain - 0.5) * 0.012;
+    float body = 1.0 - smoothstep(shapeRadius, shapeRadius + px * mix(2.0, 18.0, morph), radius);
+    float rim = 1.0 - smoothstep(0.0, px * mix(7.0, 24.0, morph), abs(radius - shapeRadius));
+    float innerShade = smoothstep(0.03, shapeRadius, radius);
 
     float3 background = float3(currentColor.rgb);
     float3 base = float3(baseColor.rgb);
     float3 edge = float3(edgeColor.rgb);
-    float3 orbColor = mix(base * 0.55, base, 1.0 - innerShade * 0.35);
-    orbColor += edge * rim * 0.85;
-    orbColor += edge * body * max(wave, 0.0) * 0.06;
-
-    float3 particleColor = mix(base, edge, particleMask);
-    particleColor += edge * particleGlow * 0.35;
-
-    float orbAlpha = max(body * 0.92, rim);
-    float particleAlpha = max(particleMask, particleGlow * 0.32);
-    float3 color = mix(orbColor, particleColor, clamp(particleAlpha, 0.0, 1.0));
-    float alpha = max(orbAlpha, particleAlpha);
+    float3 color = mix(base * 0.55, base, 1.0 - innerShade * 0.35);
+    color += edge * rim * mix(0.85, 0.72, morph);
+    color += edge * body * max(wave, 0.0) * 0.06;
+    float alpha = max(body * 0.92, rim);
 
     return half4(half3(saturate(mix(background, color, alpha))), 1.0h);
 }

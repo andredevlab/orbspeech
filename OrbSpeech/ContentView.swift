@@ -20,7 +20,6 @@ struct ContentView: View {
 
             VStack(spacing: 44) {
                 Spacer()
-                    .frame(height: 250)
 
                 VStack(spacing: 18) {
                     Text("OrbSpeech")
@@ -33,8 +32,6 @@ struct ContentView: View {
                         .foregroundStyle(.white.opacity(0.46))
                         .padding(.horizontal, 36)
                 }
-
-                Spacer()
             }
         }
     }
