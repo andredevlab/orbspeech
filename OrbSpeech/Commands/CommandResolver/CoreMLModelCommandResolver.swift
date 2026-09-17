@@ -44,6 +44,10 @@ actor CoreMLModelCommandResolver: CommandResolver {
             return OrbCommand(id: UUID().uuidString, action: "bounce", value: nil)
         }
 
+        if containsAny(text, ["cancel", "stop", "abort", "never mind", "nevermind"]) {
+            return OrbCommand(id: UUID().uuidString, action: "cancel", value: nil)
+        }
+
         if containsAny(text, ["blue", "blu"]) {
             return OrbCommand(id: UUID().uuidString, action: "color", value: "blue")
         }

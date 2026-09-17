@@ -11,7 +11,3 @@ struct CommandOutcome {
     let status: String
     let detail: String?
 }
-
-protocol CommandResolver {
-    func resolve(_ transcript: String) async throws -> OrbCommand
-}
