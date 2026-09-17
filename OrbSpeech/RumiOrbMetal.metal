@@ -25,14 +25,23 @@ static inline float rumi_wave(float angle, float time) {
     return (a * 0.52 + b * 0.32 + c * 0.16);
 }
 
-[[ stitchable ]] half4 rumi_idle(
+static inline float rumi_listening_wave(float angle, float time, float frequency) {
+    float f = mix(1.0, 7.0, clamp(frequency, 0.0, 1.0));
+    float a = sin(angle * 4.0 + time * (2.0 * f));
+    float b = sin(angle * 7.0 - time * (3.1 * f) + 1.7);
+    float c = sin(angle * 13.0 + time * (4.4 * f) + 3.1);
+    return (a * 0.45 + b * 0.35 + c * 0.20);
+}
+
+static inline half4 rumi_orb(
     float2 position,
     half4 currentColor,
     float2 size,
     float time,
     float pixelScale,
     half4 baseColor,
-    half4 edgeColor
+    half4 edgeColor,
+    float listeningFrequency
 ) {
     float side = max(min(size.x, size.y), 1.0);
     float2 center = size * 0.5;
@@ -42,9 +51,11 @@ static inline float rumi_wave(float angle, float time) {
     float angle = atan2(uv.y, uv.x);
     float px = 1.0 / (side * max(pixelScale, 1.0));
 
-    float wave = rumi_wave(angle, time);
-    float grain = rumi_noise(float2(cos(angle), sin(angle)) * 3.4 + time * 0.18);
-    float edgeOffset = (wave * 0.020 + (grain - 0.5) * 0.010);
+    float frequency = clamp(listeningFrequency, 0.0, 1.0);
+    float wave = frequency > 0.0 ? rumi_listening_wave(angle, time, frequency) : rumi_wave(angle, time);
+    float grainSpeed = mix(0.18, 2.2, frequency);
+    float grain = rumi_noise(float2(cos(angle), sin(angle)) * 3.4 + time * grainSpeed);
+    float edgeOffset = (wave * 0.030 + (grain - 0.5) * 0.012);
     float orbRadius = 0.315 + edgeOffset;
 
     float body = 1.0 - smoothstep(orbRadius, orbRadius + px * 2.0, radius);
@@ -60,4 +71,29 @@ static inline float rumi_wave(float angle, float time) {
 
     float alpha = max(body * 0.92, rim);
     return half4(half3(saturate(mix(background, color, alpha))), 1.0h);
+}
+
+[[ stitchable ]] half4 rumi_idle(
+    float2 position,
+    half4 currentColor,
+    float2 size,
+    float time,
+    float pixelScale,
+    half4 baseColor,
+    half4 edgeColor
+) {
+    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, 0.0);
+}
+
+[[ stitchable ]] half4 rumi_listening(
+    float2 position,
+    half4 currentColor,
+    float2 size,
+    float time,
+    float pixelScale,
+    half4 baseColor,
+    half4 edgeColor,
+    float listeningFrequency
+) {
+    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, listeningFrequency);
 }
