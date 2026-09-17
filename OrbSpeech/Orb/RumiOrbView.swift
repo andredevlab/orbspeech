@@ -63,14 +63,14 @@ struct RumiOrbView: View {
                 .color(base),
                 .color(edge)
             )
-        case .listening(let frequency):
+        case .listening(let level):
             ShaderLibrary.rumi_listening(
                 .float2(size),
                 .float(time),
                 .float(scale),
                 .color(base),
                 .color(edge),
-                .float(min(max(frequency, 0.0), 1.0))
+                .float(min(max(level, 0.0), 1.0))
             )
         case .thinking:
             ShaderLibrary.rumi_thinking(

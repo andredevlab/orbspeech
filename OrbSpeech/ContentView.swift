@@ -5,7 +5,7 @@ struct ContentView: View {
                                    green: 1,
                                    blue: 1)
 
-    @State private var selectedState = SelectedOrbState.idle
+    @StateObject private var viewModel = ContentViewModel()
 
     var body: some View {
         ZStack {
@@ -13,7 +13,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             RumiOrbView(background: background,
-                        state: selectedState.orbState)
+                        state: viewModel.orbState)
                 .ignoresSafeArea()
 
             VStack(spacing: 44) {
@@ -24,41 +24,24 @@ struct ContentView: View {
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .foregroundStyle(.black)
 
-                    Picker("Orb state", selection: $selectedState) {
-                        ForEach(SelectedOrbState.allCases) { state in
-                            Text(state.title)
-                                .tag(state)
+                    Text(viewModel.statusText)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.black.opacity(0.46))
+
+                    Button {
+                        Task {
+                            await viewModel.interact()
                         }
+                    } label: {
+                        Text(viewModel.isListening ? "parar" : "interagir")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .frame(width: 148, height: 44)
+                            .background(.black, in: Capsule())
                     }
-                    .pickerStyle(.segmented)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: 320)
-                        .padding(.horizontal, 36)
+                    .buttonStyle(.plain)
                 }
             }
-        }
-    }
-}
-
-private enum SelectedOrbState: String, CaseIterable, Identifiable {
-    case idle
-    case listening
-    case thinking
-
-    var id: Self { self }
-
-    var title: String {
-        rawValue
-    }
-
-    var orbState: OrbState {
-        switch self {
-        case .idle:
-            .idle
-        case .listening:
-            .listening(0.65)
-        case .thinking:
-            .thinking
         }
     }
 }
