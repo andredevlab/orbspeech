@@ -45,11 +45,14 @@ static inline half4 rumi_orb(
     float pixelScale,
     half4 baseColor,
     half4 edgeColor,
+    float2 centerOffset,
+    float bounce,
     float listeningLevel
 ) {
     float side = 190.0;
-    float2 center = size * 0.5;
-    float2 uv = (position - center) / side;
+    float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
+    float2 center = size * 0.5 + centerOffset;
+    float2 uv = (position - center) / (side * bounceScale);
 
     float radius = length(uv);
     float angle = atan2(uv.y, uv.x);
@@ -87,9 +90,11 @@ static inline half4 rumi_orb(
     float time,
     float pixelScale,
     half4 baseColor,
-    half4 edgeColor
+    half4 edgeColor,
+    float2 centerOffset,
+    float bounce
 ) {
-    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, -1.0);
+    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, centerOffset, bounce, -1.0);
 }
 
 [[ stitchable ]] half4 rumi_listening(
@@ -100,9 +105,11 @@ static inline half4 rumi_orb(
     float pixelScale,
     half4 baseColor,
     half4 edgeColor,
+    float2 centerOffset,
+    float bounce,
     float listeningFrequency
 ) {
-    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, listeningFrequency);
+    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, centerOffset, bounce, listeningFrequency);
 }
 
 [[ stitchable ]] half4 rumi_thinking(
@@ -112,11 +119,14 @@ static inline half4 rumi_orb(
     float time,
     float pixelScale,
     half4 baseColor,
-    half4 edgeColor
+    half4 edgeColor,
+    float2 centerOffset,
+    float bounce
 ) {
     float side = 190.0;
-    float2 startCenter = size * 0.5;
-    float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5);
+    float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
+    float2 startCenter = size * 0.5 + centerOffset;
+    float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5) + centerOffset;
     float px = 1.0 / (side * max(pixelScale, 1.0));
 
     float cycle = fmod(time, 7.0);
@@ -129,7 +139,7 @@ static inline half4 rumi_orb(
     shapeCenter = cycle >= 5.0 ? mix(cornerCenter, startCenter, travelBack) : shapeCenter;
     shapeCenter = mix(shapeCenter, float2(-10.0, size.y * 0.5), morph);
 
-    float2 circleScale = float2(side, side);
+    float2 circleScale = float2(side, side) * bounceScale;
     float2 plankScale = float2(34.0, size.y * 0.30);
     float2 shapeScale = mix(circleScale, plankScale, morph);
     float2 uv = (position - shapeCenter) / shapeScale;

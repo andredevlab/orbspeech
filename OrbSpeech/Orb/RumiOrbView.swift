@@ -3,6 +3,13 @@ import SwiftUI
 struct RumiOrbView: View {
     let background: Color
     let state: OrbState
+    let visualState: OrbVisualState
+
+    init(background: Color, state: OrbState, visualState: OrbVisualState = .default) {
+        self.background = background
+        self.state = state
+        self.visualState = visualState
+    }
 
     @Environment(\.displayScale) private var displayScale
     @State private var birth = Date.now
@@ -10,11 +17,16 @@ struct RumiOrbView: View {
 
     var body: some View {
         let scale = displayScale
-        let base = Color(red: 0.02, green: 0.07, blue: 0.24)
-        let edge = Color(red: 0.20, green: 0.45, blue: 1.0)
+        let base = Color(red: visualState.baseRed,
+                         green: visualState.baseGreen,
+                         blue: visualState.baseBlue)
+        let edge = Color(red: visualState.edgeRed,
+                         green: visualState.edgeGreen,
+                         blue: visualState.edgeBlue)
 
         TimelineView(.periodic(from: birth, by: 1.0 / 60.0)) { context in
             let time = birth.distance(to: context.date)
+            let thinkingTime = thinkingBirth.distance(to: context.date)
 
             Rectangle()
                 .fill(background)
@@ -22,10 +34,11 @@ struct RumiOrbView: View {
                     content.colorEffect(
                         shaderArguments(size: proxy.size,
                                         time: time,
-                                        thinkingTime: thinkingBirth.distance(to: context.date),
+                                        thinkingTime: thinkingTime,
                                         scale: scale,
                                         base: base,
-                                        edge: edge)
+                                        edge: edge,
+                                        visualState: visualState)
                     )
                 }
                 .accessibilityLabel(accessibilityLabel)
@@ -53,7 +66,8 @@ struct RumiOrbView: View {
                                              thinkingTime: TimeInterval,
                                              scale: Double,
                                              base: Color,
-                                             edge: Color) -> Shader {
+                                             edge: Color,
+                                             visualState: OrbVisualState) -> Shader {
         switch state {
         case .idle:
             ShaderLibrary.rumi_idle(
@@ -61,7 +75,9 @@ struct RumiOrbView: View {
                 .float(time),
                 .float(scale),
                 .color(base),
-                .color(edge)
+                .color(edge),
+                .float2(visualState.xOffset, visualState.yOffset),
+                .float(visualState.bounce)
             )
         case .listening(let level):
             ShaderLibrary.rumi_listening(
@@ -70,6 +86,8 @@ struct RumiOrbView: View {
                 .float(scale),
                 .color(base),
                 .color(edge),
+                .float2(visualState.xOffset, visualState.yOffset),
+                .float(visualState.bounce),
                 .float(min(max(level, 0.0), 1.0))
             )
         case .thinking:
@@ -78,7 +96,9 @@ struct RumiOrbView: View {
                 .float(thinkingTime),
                 .float(scale),
                 .color(base),
-                .color(edge)
+                .color(edge),
+                .float2(visualState.xOffset, visualState.yOffset),
+                .float(visualState.bounce)
             )
         }
     }

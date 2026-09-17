@@ -13,7 +13,8 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             RumiOrbView(background: background,
-                        state: viewModel.orbState)
+                        state: viewModel.orbState,
+                        visualState: viewModel.orbVisualState)
                 .ignoresSafeArea()
 
             VStack(spacing: 44) {
@@ -70,6 +71,14 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!viewModel.canInteract && !viewModel.isListening)
+
+                    HStack(spacing: 8) {
+                        previewButton("left", action: "move", value: "left")
+                        previewButton("middle", action: "move", value: "center")
+                        previewButton("blue", action: "color", value: "blue")
+                        previewButton("bounce", action: "bounce")
+                        previewButton("?", action: "unknown")
+                    }
                 }
             }
         }
@@ -78,14 +87,41 @@ struct ContentView: View {
     private var transcriptText: String {
         let stable = viewModel.stableTranscript
         let volatile = viewModel.volatileTranscript
+        let transcriptLines = [stable, volatile]
+            .filter { !$0.isEmpty }
+            .map { "transcript: \($0)" }
 
-        if stable.isEmpty && volatile.isEmpty {
+        let commandLines = [viewModel.resolvedCommandText, viewModel.commandOutcomeText]
+            .filter { !$0.isEmpty }
+
+        let lines = transcriptLines + commandLines
+
+        if lines.isEmpty {
             return "transcrição aparece aqui"
         }
 
-        return [stable, volatile]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        return lines.joined(separator: "\n")
+    }
+
+    private func previewButton(_ title: String,
+                               action: String,
+                               value: String? = nil) -> some View {
+        Button {
+            Task {
+                await viewModel.executePreviewCommand(action: action, value: value)
+            }
+        } label: {
+            Text(title)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.black)
+                .frame(minWidth: 44, minHeight: 32)
+                .padding(.horizontal, 6)
+                .overlay {
+                    Capsule()
+                        .stroke(.black.opacity(0.16), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
     }
 }
 
