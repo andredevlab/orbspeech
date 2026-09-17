@@ -5,6 +5,7 @@ final class MicrophoneLevelService: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let queue = DispatchQueue(label: "rumi.microphone.level")
     private var levelHandler: (@Sendable (Double) -> Void)?
+    private var bufferHandler: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private var smoothedLevel: Double = 0
 
     func requestPermission() async -> Bool {
@@ -15,8 +16,12 @@ final class MicrophoneLevelService: @unchecked Sendable {
         }
     }
 
-    func start(levelHandler: @escaping @Sendable (Double) -> Void) throws {
+    func start(
+        levelHandler: @escaping @Sendable (Double) -> Void,
+        bufferHandler: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) throws {
         self.levelHandler = levelHandler
+        self.bufferHandler = bufferHandler
         smoothedLevel = 0
 
         let session = AVAudioSession.sharedInstance()
@@ -39,11 +44,16 @@ final class MicrophoneLevelService: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         levelHandler = nil
+        bufferHandler = nil
         smoothedLevel = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     private func handle(buffer: AVAudioPCMBuffer) {
+        if let copiedBuffer = buffer.copyPCMBuffer() {
+            bufferHandler?(copiedBuffer)
+        }
+
         guard let channelData = buffer.floatChannelData else { return }
 
         let frameLength = Int(buffer.frameLength)
@@ -70,5 +80,26 @@ final class MicrophoneLevelService: @unchecked Sendable {
             self.smoothedLevel += (nextLevel - self.smoothedLevel) * 0.15
             self.levelHandler?(self.smoothedLevel)
         }
+    }
+}
+
+private extension AVAudioPCMBuffer {
+    func copyPCMBuffer() -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameLength) else {
+            return nil
+        }
+
+        copy.frameLength = frameLength
+        let channelCount = Int(format.channelCount)
+        let frameCount = Int(frameLength)
+
+        if let source = floatChannelData, let destination = copy.floatChannelData {
+            for channel in 0..<channelCount {
+                destination[channel].update(from: source[channel], count: frameCount)
+            }
+            return copy
+        }
+
+        return nil
     }
 }
