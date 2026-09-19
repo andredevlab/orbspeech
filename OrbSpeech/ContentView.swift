@@ -5,7 +5,7 @@ struct ContentView: View {
                                    green: 1,
                                    blue: 1)
 
-    @StateObject private var viewModel = ContentViewModel()
+    @State private var viewModel = ContentViewModel()
 
     var body: some View {
         ZStack {

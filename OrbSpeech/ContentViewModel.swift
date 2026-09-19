@@ -1,39 +1,40 @@
-import Combine
 import Foundation
+import Observation
 
 @MainActor
-final class ContentViewModel: ObservableObject {
-    @Published private(set) var orbState = OrbState.idle
-    @Published private(set) var orbVisualState = OrbVisualState.default
-    @Published private(set) var isListening = false
-    @Published private(set) var isPreparing = false
-    @Published private(set) var isAppleNativeReady = false
-    @Published private(set) var statusText = "idle"
-    @Published private(set) var stableTranscript = ""
-    @Published private(set) var volatileTranscript = ""
-    @Published private(set) var resolvedCommandText = ""
-    @Published private(set) var commandOutcomeText = ""
+@Observable
+final class ContentViewModel {
+    private(set) var orbState = OrbState.idle
+    private(set) var orbVisualState = OrbVisualState.default
+    private(set) var isListening = false
+    private(set) var isPreparing = false
+    private(set) var isAppleNativeReady = false
+    private(set) var statusText = "idle"
+    private(set) var stableTranscript = ""
+    private(set) var volatileTranscript = ""
+    private(set) var resolvedCommandText = ""
+    private(set) var commandOutcomeText = ""
 
     var canInteract: Bool {
         isAppleNativeReady && !isPreparing
     }
 
-    private let microphone = MicrophoneLevelService()
-    private let appleSpeechRecognizer = AppleNativeSpeechRecognizer()
-    private let fluidAudioSpeechRecognizer = FluidAudioSpeechRecognizer()
-    private let speechSynthesizer = OrbSpeechSynthesizer()
-    private let foundationModelsCommandResolver = FoundationModelsCommandResolver()
-    private let coreMLCommandResolver = CoreMLModelCommandResolver()
-    private var activeSpeechBackend = SpeechRecognizerBackend.appleNative
-    private var activeCommandResolver = CommandResolverBackend.foundationModels
-    private var commandTask: Task<Void, Never>?
-    private var pendingTranscriptTask: Task<Void, Never>?
-    private var pendingTranscriptText = ""
-    private var lastResolvedTranscript = ""
-    private var lastLevelUpdate = Date.distantPast
-    private var lastOrbLevel = 0.0
-    private var isProcessingCommand = false
-    private lazy var commandExecutor = OrbCommandExecutor(initialState: orbVisualState) { [weak self] visualState in
+    @ObservationIgnored private let microphone = MicrophoneLevelService()
+    @ObservationIgnored private let appleSpeechRecognizer = AppleNativeSpeechRecognizer()
+    @ObservationIgnored private let fluidAudioSpeechRecognizer = FluidAudioSpeechRecognizer()
+    @ObservationIgnored private let speechSynthesizer = OrbSpeechSynthesizer()
+    @ObservationIgnored private let foundationModelsCommandResolver = FoundationModelsCommandResolver()
+    @ObservationIgnored private let coreMLCommandResolver = CoreMLModelCommandResolver()
+    @ObservationIgnored private var activeSpeechBackend = SpeechRecognizerBackend.appleNative
+    @ObservationIgnored private var activeCommandResolver = CommandResolverBackend.foundationModels
+    @ObservationIgnored private var commandTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingTranscriptTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingTranscriptText = ""
+    @ObservationIgnored private var lastResolvedTranscript = ""
+    @ObservationIgnored private var lastLevelUpdate = Date.distantPast
+    @ObservationIgnored private var lastOrbLevel = 0.0
+    @ObservationIgnored private var isProcessingCommand = false
+    @ObservationIgnored private lazy var commandExecutor = OrbCommandExecutor(initialState: orbVisualState) { [weak self] visualState in
         self?.orbVisualState = visualState
     }
 
