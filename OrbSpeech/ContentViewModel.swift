@@ -186,7 +186,13 @@ final class ContentViewModel: ObservableObject {
         appendLog("preview command: \(Self.shortCommandDescription(command))")
         statusText = "thinking"
 
-        try? await Task.sleep(for: .seconds(7))
+        try? await Task.sleep(for: .milliseconds(1500))
+        guard !Task.isCancelled else { return }
+
+        orbState = .settling
+        statusText = "settling"
+
+        try? await Task.sleep(for: .milliseconds(1500))
         guard !Task.isCancelled else { return }
 
         orbState = .idle
@@ -249,11 +255,19 @@ final class ContentViewModel: ObservableObject {
                     return
                 }
 
-                try? await Task.sleep(for: .seconds(7))
+                try? await Task.sleep(for: .milliseconds(1500))
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    orbState = .idle
+                    orbState = .settling
+                    statusText = "settling"
+                }
+
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run {
+                    orbState = isListening ? .listening(0) : .idle
                     isProcessingCommand = false
                 }
 

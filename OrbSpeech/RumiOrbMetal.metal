@@ -126,18 +126,67 @@ static inline half4 rumi_orb(
     float side = 190.0;
     float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
     float2 startCenter = size * 0.5 + centerOffset;
-    float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5) + centerOffset;
+    float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5);
+    float2 plankCenter = float2(-10.0, size.y * 0.5);
     float px = 1.0 / (side * max(pixelScale, 1.0));
 
-    float cycle = fmod(time, 7.0);
-    float travelOut = rumi_ease(cycle);
-    float reform = rumi_ease((cycle - 3.0) / 2.0);
-    float travelBack = rumi_ease((cycle - 5.0) / 2.0);
-    float morph = cycle < 1.0 ? travelOut : (cycle < 3.0 ? 1.0 : (cycle < 5.0 ? 1.0 - reform : 0.0));
+    float progress = rumi_ease(time / 1.5);
+    float morph = progress;
+    float2 shapeCenter = mix(startCenter, cornerCenter, progress);
+    shapeCenter = mix(shapeCenter, plankCenter, morph);
 
-    float2 shapeCenter = mix(startCenter, cornerCenter, travelOut);
-    shapeCenter = cycle >= 5.0 ? mix(cornerCenter, startCenter, travelBack) : shapeCenter;
-    shapeCenter = mix(shapeCenter, float2(-10.0, size.y * 0.5), morph);
+    float2 circleScale = float2(side, side) * bounceScale;
+    float2 plankScale = float2(34.0, size.y * 0.30);
+    float2 shapeScale = mix(circleScale, plankScale, morph);
+    float2 uv = (position - shapeCenter) / shapeScale;
+
+    float radius = length(uv);
+    float angle = atan2(uv.y, uv.x);
+    float wave = mix(
+        rumi_wave(angle, time),
+        sin(uv.y * 19.0 + time * 3.4) * 1.1 + sin(uv.y * 31.0 - time * 2.1) * 0.55,
+        morph
+    );
+    float grain = rumi_noise(float2(cos(angle), sin(angle)) * 3.4 + time * 0.18);
+    float shapeRadius = mix(0.315, 1.0, morph) + wave * mix(0.030, 0.035, morph) + (grain - 0.5) * 0.012;
+    float body = 1.0 - smoothstep(shapeRadius, shapeRadius + px * mix(2.0, 18.0, morph), radius);
+    float rim = 1.0 - smoothstep(0.0, px * mix(7.0, 24.0, morph), abs(radius - shapeRadius));
+    float innerShade = smoothstep(0.03, shapeRadius, radius);
+
+    float3 background = float3(currentColor.rgb);
+    float3 base = float3(baseColor.rgb);
+    float3 edge = float3(edgeColor.rgb);
+    float3 color = mix(base * 0.55, base, 1.0 - innerShade * 0.35);
+    color += edge * rim * mix(0.85, 0.72, morph);
+    color += edge * body * max(wave, 0.0) * 0.06;
+    float alpha = max(body * 0.92, rim);
+
+    return half4(half3(saturate(mix(background, color, alpha))), 1.0h);
+}
+
+[[ stitchable ]] half4 rumi_settling(
+    float2 position,
+    half4 currentColor,
+    float2 size,
+    float time,
+    float pixelScale,
+    half4 baseColor,
+    half4 edgeColor,
+    float2 centerOffset,
+    float bounce
+) {
+    float side = 190.0;
+    float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
+    float2 startCenter = size * 0.5 + centerOffset;
+    float2 cornerCenter = float2(side * 0.5 + 18.0, size.y * 0.5);
+    float2 plankCenter = float2(-10.0, size.y * 0.5);
+    float px = 1.0 / (side * max(pixelScale, 1.0));
+
+    float progress = rumi_ease(time / 1.5);
+    float reverseProgress = 1.0 - progress;
+    float morph = reverseProgress;
+    float2 shapeCenter = mix(startCenter, cornerCenter, reverseProgress);
+    shapeCenter = mix(shapeCenter, plankCenter, morph);
 
     float2 circleScale = float2(side, side) * bounceScale;
     float2 plankScale = float2(34.0, size.y * 0.30);

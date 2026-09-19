@@ -13,7 +13,7 @@ struct RumiOrbView: View {
 
     @Environment(\.displayScale) private var displayScale
     @State private var birth = Date.now
-    @State private var thinkingBirth = Date.now
+    @State private var transitionBirth = Date.now
 
     var body: some View {
         let scale = displayScale
@@ -26,7 +26,7 @@ struct RumiOrbView: View {
 
         TimelineView(.periodic(from: birth, by: 1.0 / 60.0)) { context in
             let time = birth.distance(to: context.date)
-            let thinkingTime = thinkingBirth.distance(to: context.date)
+            let transitionTime = transitionBirth.distance(to: context.date)
 
             Rectangle()
                 .fill(background)
@@ -34,7 +34,7 @@ struct RumiOrbView: View {
                     content.colorEffect(
                         shaderArguments(size: proxy.size,
                                         time: time,
-                                        thinkingTime: thinkingTime,
+                                        transitionTime: transitionTime,
                                         scale: scale,
                                         base: base,
                                         edge: edge,
@@ -45,7 +45,10 @@ struct RumiOrbView: View {
         }
         .onChange(of: state) { _, newState in
             if case .thinking = newState {
-                thinkingBirth = Date.now
+                transitionBirth = Date.now
+            }
+            if case .settling = newState {
+                transitionBirth = Date.now
             }
         }
     }
@@ -58,12 +61,14 @@ struct RumiOrbView: View {
             "Rumi listening orb"
         case .thinking:
             "Rumi thinking orb"
+        case .settling:
+            "Rumi settling orb"
         }
     }
 
     nonisolated private func shaderArguments(size: CGSize,
                                              time: TimeInterval,
-                                             thinkingTime: TimeInterval,
+                                             transitionTime: TimeInterval,
                                              scale: Double,
                                              base: Color,
                                              edge: Color,
@@ -93,7 +98,17 @@ struct RumiOrbView: View {
         case .thinking:
             ShaderLibrary.rumi_thinking(
                 .float2(size),
-                .float(thinkingTime),
+                .float(transitionTime),
+                .float(scale),
+                .color(base),
+                .color(edge),
+                .float2(visualState.xOffset, visualState.yOffset),
+                .float(visualState.bounce)
+            )
+        case .settling:
+            ShaderLibrary.rumi_settling(
+                .float2(size),
+                .float(transitionTime),
                 .float(scale),
                 .color(base),
                 .color(edge),
