@@ -2,7 +2,7 @@
 import Foundation
 import Speech
 
-actor AppleNativeSpeechRecognizer {
+actor AppleNativeSpeechRecognizer: SpeechRecognizer {
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -61,7 +61,7 @@ actor AppleNativeSpeechRecognizer {
         request?.append(buffer.buffer)
     }
 
-    func finishStreaming() -> TranscriptionResult {
+    func finishStreaming() async -> TranscriptionResult {
         request?.endAudio()
         recognitionTask?.finish()
         let text = latestText.trimmingCharacters(in: .whitespacesAndNewlines)

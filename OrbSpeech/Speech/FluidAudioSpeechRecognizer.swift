@@ -2,7 +2,7 @@
 import FluidAudio
 import Foundation
 
-actor FluidAudioSpeechRecognizer {
+actor FluidAudioSpeechRecognizer: SpeechRecognizer {
     private var models: AsrModels?
     private var streamingManager: SlidingWindowAsrManager?
     private var updateTask: Task<Void, Never>?
@@ -65,16 +65,24 @@ actor FluidAudioSpeechRecognizer {
         await streamingManager.streamAudio(buffer.buffer)
     }
 
-    func finishStreaming() async throws -> TranscriptionResult {
+    func finishStreaming() async -> TranscriptionResult {
         guard let streamingManager else {
             return TranscriptionResult(stableText: "", volatileText: "")
         }
 
-        let text = try await streamingManager.finish().trimmingCharacters(in: .whitespacesAndNewlines)
-        updateTask?.cancel()
-        updateTask = nil
-        self.streamingManager = nil
-        return TranscriptionResult(stableText: text, volatileText: "")
+        do {
+            let text = try await streamingManager.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            updateTask?.cancel()
+            updateTask = nil
+            self.streamingManager = nil
+            return TranscriptionResult(stableText: text, volatileText: "")
+        } catch {
+            print("[OrbSpeech] FluidAudio: finish failed - \(error.localizedDescription)")
+            updateTask?.cancel()
+            updateTask = nil
+            self.streamingManager = nil
+            return TranscriptionResult(stableText: "", volatileText: "")
+        }
     }
 }
 

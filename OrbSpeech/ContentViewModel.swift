@@ -20,11 +20,9 @@ final class ContentViewModel {
     }
 
     @ObservationIgnored private let microphone = MicrophoneLevelService()
-    @ObservationIgnored private let appleSpeechRecognizer = AppleNativeSpeechRecognizer()
-    @ObservationIgnored private let fluidAudioSpeechRecognizer = FluidAudioSpeechRecognizer()
+    @ObservationIgnored private let speechRecognizer: any SpeechRecognizer
     @ObservationIgnored private let speechSynthesizer = OrbSpeechSynthesizer()
     @ObservationIgnored private let commandResolver: any CommandResolver
-    @ObservationIgnored private var activeSpeechBackend = SpeechRecognizerBackend.appleNative
     @ObservationIgnored private var commandTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptText = ""
@@ -36,7 +34,9 @@ final class ContentViewModel {
         self?.orbVisualState = visualState
     }
 
-    init(commandResolver: any CommandResolver = CommandResolverOrchestrator()) {
+    init(speechRecognizer: any SpeechRecognizer = SpeechRecognizerOrchestrator(),
+         commandResolver: any CommandResolver = CommandResolverOrchestrator()) {
+        self.speechRecognizer = speechRecognizer
         self.commandResolver = commandResolver
     }
 
@@ -48,19 +48,9 @@ final class ContentViewModel {
         appendLog("prepare: starting Apple Speech")
 
         do {
-            do {
-                try await appleSpeechRecognizer.prepare()
-                activeSpeechBackend = .appleNative
-                statusText = "Apple Speech ready"
-                appendLog("prepare: Apple Speech ready")
-            } catch {
-                appendLog("prepare: Apple Speech unavailable - \(error.localizedDescription)")
-                appendLog("prepare: falling back to FluidAudio CoreML ASR")
-                try await fluidAudioSpeechRecognizer.prepare()
-                activeSpeechBackend = .fluidAudio
-                statusText = "CoreML speech ready"
-                appendLog("prepare: FluidAudio CoreML ASR ready")
-            }
+            try await speechRecognizer.prepare()
+            statusText = "Speech ready"
+            appendLog("prepare: speech recognizer ready")
             
             isAppleNativeReady = true
             
@@ -95,7 +85,7 @@ final class ContentViewModel {
         }
 
         do {
-            try await startSpeechStreaming { [weak self] result in
+            try await speechRecognizer.startStreaming { [weak self] result in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.handle(transcription: result)
@@ -114,7 +104,7 @@ final class ContentViewModel {
                 }
             } bufferHandler: { [weak self] buffer in
                 Task {
-                    await self?.streamSpeech(buffer: AudioBufferBox(buffer))
+                    await self?.speechRecognizer.stream(buffer: AudioBufferBox(buffer))
                 }
             }
 
@@ -140,13 +130,8 @@ final class ContentViewModel {
         commandExecutor.cancel()
         speechSynthesizer.stop()
         isProcessingCommand = false
-        Task { [activeSpeechBackend, appleSpeechRecognizer, fluidAudioSpeechRecognizer] in
-            switch activeSpeechBackend {
-            case .appleNative:
-                _ = await appleSpeechRecognizer.finishStreaming()
-            case .fluidAudio:
-                _ = try? await fluidAudioSpeechRecognizer.finishStreaming()
-            }
+        Task { [speechRecognizer] in
+            _ = await speechRecognizer.finishStreaming()
         }
         isListening = false
         statusText = "idle"
@@ -399,24 +384,6 @@ final class ContentViewModel {
         statusText = message
     }
 
-    private func startSpeechStreaming(_ onUpdate: @escaping @Sendable (TranscriptionResult) -> Void) async throws {
-        switch activeSpeechBackend {
-        case .appleNative:
-            try await appleSpeechRecognizer.startStreaming(onUpdate: onUpdate)
-        case .fluidAudio:
-            try await fluidAudioSpeechRecognizer.startStreaming(onUpdate: onUpdate)
-        }
-    }
-
-    private func streamSpeech(buffer: AudioBufferBox) async {
-        switch activeSpeechBackend {
-        case .appleNative:
-            await appleSpeechRecognizer.stream(buffer: buffer)
-        case .fluidAudio:
-            await fluidAudioSpeechRecognizer.stream(buffer: buffer)
-        }
-    }
-
     private func scheduleResolveAfterSilenceIfNeeded(_ transcript: String) {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTranscript.isEmpty else { return }
@@ -472,9 +439,4 @@ final class ContentViewModel {
         lastOrbLevel = normalizedLevel
         return normalizedLevel
     }
-}
-
-private enum SpeechRecognizerBackend {
-    case appleNative
-    case fluidAudio
 }
