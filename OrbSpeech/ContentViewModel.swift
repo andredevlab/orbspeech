@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Observation
 
 enum State {
@@ -46,6 +47,14 @@ final class ContentViewModel {
     }
     
     func prepareOnDeviceComponents() async {
+        guard await microphoneCapturing.requestPermission() else {
+            statusText = "You should allow microphone permission."
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                await UIApplication.shared.open(url)
+            }
+            return
+        }
+        
         guard onDeviceComponentsState == .idle else { return }
         
         onDeviceComponentsState = .loading

@@ -61,7 +61,7 @@ struct ContentView: View {
                             await viewModel.interact()
                         }
                     } label: {
-                        Text(viewModel.isListening ? "parar" : "interagir")
+                        Text(viewModel.isListening ? "Stop" : "Talk")
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.white)
                             .frame(width: 148, height: 44)
