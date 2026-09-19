@@ -74,6 +74,7 @@ final class ContentViewModel {
             try await speechRecognizer.startStreaming { [weak self] result in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    guard orbState != .speaking else { return }
                     self.handle(transcription: result)
                 }
             }
@@ -141,26 +142,18 @@ final class ContentViewModel {
         commandTask?.cancel()
         speechSynthesizer.stop()
         commandExecutor.cancel()
+        isProcessingCommand = true
+        orbState = .thinking
+        statusText = orbState.description
         appendLog("resolver: resolving \"\(trimmedTranscript)\"")
         commandTask = Task { [commandResolver] in
             do {
                 let command = try await commandResolver.resolve(trimmedTranscript)
                 guard !Task.isCancelled else { return }
                 
-                if command.action == "unknown" {
-                    await MainActor.run {
-                        isProcessingCommand = false
-                        orbState = isListening ? .listening(0) : .idle
-                        appendLog("resolver command: \(command)")
-                        statusText = orbState.description
-                    }
-                    return
-                }
-                
                 await MainActor.run {
-                    isProcessingCommand = true
-                    orbState = .thinking
                     appendLog("resolver command: \(command)")
+                    orbState = .settling
                     statusText = orbState.description
                 }
                 
@@ -174,34 +167,36 @@ final class ContentViewModel {
                 try? await Task.sleep(for: .milliseconds(1500))
                 guard !Task.isCancelled else { return }
                 
-                await MainActor.run {
-                    orbState = .settling
-                    statusText = orbState.description
+                if command.action == "unknown" {
+                    await MainActor.run {
+                        isProcessingCommand = false
+                        orbState = isListening ? .listening(0) : .idle
+                        statusText = "unknown"
+                    }
+                    return
                 }
                 
-                try? await Task.sleep(for: .milliseconds(1500))
-                guard !Task.isCancelled else { return }
-                
                 await MainActor.run {
-                    orbState = isListening ? .listening(0) : .idle
-                    isProcessingCommand = false
+                    orbState = .speaking
+                    isProcessingCommand = true
+                    statusText = orbState.description
                 }
                 
                 await speechSynthesizer.speak("Ok, I'll do what you asked.")
                 guard !Task.isCancelled else { return }
                 
                 await MainActor.run {
-                    statusText = "executing"
+                    orbState = .acting
+                    isProcessingCommand = true
+                    statusText = orbState.description
                 }
                 
                 let outcome = await commandExecutor.execute(command)
                 guard !Task.isCancelled else { return }
                 
                 await MainActor.run {
-                    if isProcessingCommand {
-                        isProcessingCommand = false
-                        orbState = isListening ? .listening(0) : .idle
-                    }
+                    isProcessingCommand = false
+                    orbState = isListening ? .listening(0) : .idle
                     appendLog("executor outcome: \(outcome)")
                     statusText = outcome.status
                 }
@@ -234,10 +229,6 @@ final class ContentViewModel {
     private func scheduleResolveAfterSilenceIfNeeded(_ transcript: String) {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTranscript.isEmpty else { return }
-        guard !Self.isSynthesizedAcknowledgement(trimmedTranscript) else {
-            appendLog("transcript ignored synthesized acknowledgement")
-            return
-        }
         
         pendingTranscriptTask?.cancel()
         if pendingTranscriptText != trimmedTranscript {
@@ -257,20 +248,6 @@ final class ContentViewModel {
                 self?.resolveAndExecute(trimmedTranscript)
             }
         }
-    }
-    
-    nonisolated private static func isSynthesizedAcknowledgement(_ transcript: String) -> Bool {
-        let normalized = transcript
-            .lowercased()
-            .replacingOccurrences(of: "’", with: "'")
-            .filter { $0.isLetter || $0.isWhitespace || $0 == "'" }
-            .split(separator: " ")
-            .joined(separator: " ")
-        
-        return normalized == "ok i'll do what you asked"
-        || normalized == "okay i'll do what you asked"
-        || normalized == "ok i will do what you asked"
-        || normalized == "okay i will do what you asked"
     }
     
     private func orbLevelToPublish(from level: Double) -> Double? {

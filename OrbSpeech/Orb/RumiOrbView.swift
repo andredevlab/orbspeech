@@ -63,6 +63,10 @@ struct RumiOrbView: View {
             "Rumi thinking orb"
         case .settling:
             "Rumi settling orb"
+        case .speaking:
+            "Rumi speaking orb"
+        case .acting:
+            "Rumi acting orb"
         }
     }
 
@@ -94,6 +98,17 @@ struct RumiOrbView: View {
                 .float2(visualState.xOffset, visualState.yOffset),
                 .float(visualState.bounce),
                 .float(min(max(level, 0.0), 1.0))
+            )
+        case .speaking, .acting:
+            ShaderLibrary.rumi_listening(
+                .float2(size),
+                .float(time),
+                .float(scale),
+                .color(base),
+                .color(edge),
+                .float2(visualState.xOffset, visualState.yOffset),
+                .float(visualState.bounce),
+                .float(0.0)
             )
         case .thinking:
             ShaderLibrary.rumi_thinking(
