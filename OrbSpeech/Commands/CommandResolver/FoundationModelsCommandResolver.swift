@@ -45,7 +45,7 @@ actor FoundationModelsCommandResolver: CommandResolver {
             """
         let response = try await session.respond(to: commandInstructions,
                                                  schema: Self.commandSchema(),
-                                                 options: GenerationOptions(sampling: .greedy,
+                                                 options: GenerationOptions(samplingMode: .greedy,
                                                                             temperature: 0,
                                                                             maximumResponseTokens: 40))
         

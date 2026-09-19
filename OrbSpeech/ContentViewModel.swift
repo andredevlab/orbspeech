@@ -23,10 +23,8 @@ final class ContentViewModel {
     @ObservationIgnored private let appleSpeechRecognizer = AppleNativeSpeechRecognizer()
     @ObservationIgnored private let fluidAudioSpeechRecognizer = FluidAudioSpeechRecognizer()
     @ObservationIgnored private let speechSynthesizer = OrbSpeechSynthesizer()
-    @ObservationIgnored private let foundationModelsCommandResolver = FoundationModelsCommandResolver()
-    @ObservationIgnored private let coreMLCommandResolver = CoreMLModelCommandResolver()
+    @ObservationIgnored private let commandResolver: any CommandResolver
     @ObservationIgnored private var activeSpeechBackend = SpeechRecognizerBackend.appleNative
-    @ObservationIgnored private var activeCommandResolver = CommandResolverBackend.foundationModels
     @ObservationIgnored private var commandTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptText = ""
@@ -36,6 +34,10 @@ final class ContentViewModel {
     @ObservationIgnored private var isProcessingCommand = false
     @ObservationIgnored private lazy var commandExecutor = OrbCommandExecutor(initialState: orbVisualState) { [weak self] visualState in
         self?.orbVisualState = visualState
+    }
+
+    init(commandResolver: any CommandResolver = CommandResolverOrchestrator()) {
+        self.commandResolver = commandResolver
     }
 
     func prepareAppleNative() async {
@@ -59,25 +61,16 @@ final class ContentViewModel {
                 statusText = "CoreML speech ready"
                 appendLog("prepare: FluidAudio CoreML ASR ready")
             }
-
+            
             isAppleNativeReady = true
-
+            
             do {
-                try await foundationModelsCommandResolver.prewarm()
-                activeCommandResolver = .foundationModels
-                appendLog("prepare: FoundationModels resolver prewarmed")
+                try await commandResolver.prewarm()
+                appendLog("prepare: command resolver ready")
                 statusText = "Apple native ready"
             } catch {
                 appendLog("prepare: command resolver unavailable - \(error.localizedDescription)")
-                do {
-                    try await coreMLCommandResolver.prewarm()
-                    activeCommandResolver = .coreML
-                    appendLog("prepare: CoreMLModelCommandResolver ready")
-                    statusText = "Core ML fallback ready"
-                } catch {
-                    appendLog("prepare: CoreMLModelCommandResolver unavailable - \(error.localizedDescription)")
-                    statusText = "Speech ready, model unavailable"
-                }
+                statusText = "Speech ready, model unavailable"
             }
         } catch {
             statusText = error.localizedDescription
@@ -217,16 +210,10 @@ final class ContentViewModel {
         commandTask?.cancel()
         speechSynthesizer.stop()
         commandExecutor.cancel()
-        let backend = activeCommandResolver
-        appendLog("resolver: resolving with \(backend.logName) \"\(trimmedTranscript)\"")
-        commandTask = Task { [foundationModelsCommandResolver, coreMLCommandResolver] in
+        appendLog("resolver: resolving \"\(trimmedTranscript)\"")
+        commandTask = Task { [commandResolver] in
             do {
-                let command = try await resolveCommand(
-                    trimmedTranscript,
-                    backend: backend,
-                    foundationModelsCommandResolver: foundationModelsCommandResolver,
-                    coreMLCommandResolver: coreMLCommandResolver
-                )
+                let command = try await commandResolver.resolve(trimmedTranscript)
                 guard !Task.isCancelled else { return }
 
                 if command.action == "unknown" {
@@ -412,24 +399,6 @@ final class ContentViewModel {
         statusText = message
     }
 
-    private func resolveCommand(_ transcript: String,
-                                backend: CommandResolverBackend,
-                                foundationModelsCommandResolver: FoundationModelsCommandResolver,
-                                coreMLCommandResolver: CoreMLModelCommandResolver) async throws -> OrbCommand {
-        switch backend {
-        case .foundationModels:
-            do {
-                return try await foundationModelsCommandResolver.resolve(transcript)
-            } catch {
-                appendLog("resolver: FoundationModels failed, retrying with CoreMLModelCommandResolver - \(error.localizedDescription)")
-                activeCommandResolver = .coreML
-                return try await coreMLCommandResolver.resolve(transcript)
-            }
-        case .coreML:
-            return try await coreMLCommandResolver.resolve(transcript)
-        }
-    }
-
     private func startSpeechStreaming(_ onUpdate: @escaping @Sendable (TranscriptionResult) -> Void) async throws {
         switch activeSpeechBackend {
         case .appleNative:
@@ -502,20 +471,6 @@ final class ContentViewModel {
         lastLevelUpdate = now
         lastOrbLevel = normalizedLevel
         return normalizedLevel
-    }
-}
-
-private enum CommandResolverBackend {
-    case foundationModels
-    case coreML
-
-    var logName: String {
-        switch self {
-        case .foundationModels:
-            "FoundationModelsCommandResolver"
-        case .coreML:
-            "CoreMLModelCommandResolver"
-        }
     }
 }
 
