@@ -45,7 +45,8 @@ actor FluidAudioSpeechRecognizer {
         )
         let stream = SlidingWindowAsrManager(config: config)
         try await stream.loadModels(models)
-        try await stream.startStreaming(source: .microphone)
+        try await stream.startStreaming(source: .system)
+        print("[OrbSpeech] FluidAudio: streaming from app-provided audio buffers")
         streamingManager = stream
 
         updateTask = Task {
