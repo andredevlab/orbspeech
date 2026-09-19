@@ -4,14 +4,17 @@ struct ContentView: View {
     private let background = Color(red: 1,
                                    green: 1,
                                    blue: 1)
-
-    @State private var viewModel = ContentViewModel()
-
+    
+    @State private var viewModel = ContentViewModel(microphoneCapturing: MicrophoneService(),
+                                                    speechRecognizer: SpeechRecognizerOrchestrator(),
+                                                    speechSynthesizer: OrbSpeechSynthesizer(),
+                                                    commandResolver: CommandResolverOrchestrator())
+    
     var body: some View {
         ZStack {
             background
                 .ignoresSafeArea()
-
+            
             RumiOrbView(background: background,
                         state: viewModel.orbState,
                         visualState: viewModel.orbVisualState)

@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 @MainActor
-final class OrbSpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
+final class OrbSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
     private var continuation: CheckedContinuation<Void, Never>?
 

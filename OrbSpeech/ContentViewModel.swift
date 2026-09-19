@@ -14,15 +14,16 @@ final class ContentViewModel {
     private(set) var volatileTranscript = ""
     private(set) var resolvedCommandText = ""
     private(set) var commandOutcomeText = ""
-
+    
     var canInteract: Bool {
         isAppleNativeReady && !isPreparing
     }
-
-    @ObservationIgnored private let microphone = MicrophoneLevelService()
+    
+    @ObservationIgnored private let microphoneCapturing: any MicrophoneCapturing
     @ObservationIgnored private let speechRecognizer: any SpeechRecognizer
-    @ObservationIgnored private let speechSynthesizer = OrbSpeechSynthesizer()
+    @ObservationIgnored private let speechSynthesizer: any SpeechSynthesizing
     @ObservationIgnored private let commandResolver: any CommandResolver
+    
     @ObservationIgnored private var commandTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTranscriptText = ""
@@ -33,20 +34,24 @@ final class ContentViewModel {
     @ObservationIgnored private lazy var commandExecutor = OrbCommandExecutor(initialState: orbVisualState) { [weak self] visualState in
         self?.orbVisualState = visualState
     }
-
-    init(speechRecognizer: any SpeechRecognizer = SpeechRecognizerOrchestrator(),
-         commandResolver: any CommandResolver = CommandResolverOrchestrator()) {
+    
+    init(microphoneCapturing: any MicrophoneCapturing,
+         speechRecognizer: any SpeechRecognizer,
+         speechSynthesizer: any SpeechSynthesizing,
+         commandResolver: any CommandResolver) {
+        self.microphoneCapturing = microphoneCapturing
         self.speechRecognizer = speechRecognizer
+        self.speechSynthesizer = speechSynthesizer
         self.commandResolver = commandResolver
     }
-
+    
     func prepareAppleNative() async {
         guard !isAppleNativeReady, !isPreparing else { return }
-
+        
         isPreparing = true
         statusText = "preparing Apple Speech"
         appendLog("prepare: starting Apple Speech")
-
+        
         do {
             try await speechRecognizer.prepare()
             statusText = "Speech ready"
@@ -66,24 +71,24 @@ final class ContentViewModel {
             statusText = error.localizedDescription
             appendLog("prepare error: \(error.localizedDescription)")
         }
-
+        
         isPreparing = false
     }
-
+    
     func interact() async {
         guard canInteract || isListening else { return }
         isListening ? stopListening() : await startListening()
     }
-
+    
     private func startListening() async {
-        let allowed = await microphone.requestPermission()
+        let allowed = await microphoneCapturing.requestPermission()
         guard allowed else {
             statusText = "microphone denied"
             appendLog("microphone error: permission denied")
             orbState = .idle
             return
         }
-
+        
         do {
             try await speechRecognizer.startStreaming { [weak self] result in
                 Task { @MainActor [weak self] in
@@ -91,8 +96,8 @@ final class ContentViewModel {
                     self.handle(transcription: result)
                 }
             }
-
-            try microphone.start { [weak self] level in
+            
+            try microphoneCapturing.start { [weak self] level in
                 guard let self else { return }
                 Task { @MainActor in
                     guard let orbLevel = self.orbLevelToPublish(from: level) else { return }
@@ -107,7 +112,7 @@ final class ContentViewModel {
                     await self?.speechRecognizer.stream(buffer: AudioBufferBox(buffer))
                 }
             }
-
+            
             isListening = true
             statusText = "listening"
             orbState = .listening(0)
@@ -119,9 +124,9 @@ final class ContentViewModel {
             orbState = .idle
         }
     }
-
+    
     private func stopListening() {
-        microphone.stop()
+        microphoneCapturing.stop()
         pendingTranscriptTask?.cancel()
         pendingTranscriptTask = nil
         pendingTranscriptText = ""
@@ -138,7 +143,7 @@ final class ContentViewModel {
         orbState = .idle
         appendLog("listening: stopped")
     }
-
+    
     private func handle(transcription: TranscriptionResult) {
         if !transcription.stableText.isEmpty {
             stableTranscript = transcription.stableText
@@ -150,47 +155,47 @@ final class ContentViewModel {
             scheduleResolveAfterSilenceIfNeeded(transcription.volatileText)
         }
     }
-
+    
     func executePreviewCommand(action: String, value: String? = nil) async {
         commandTask?.cancel()
         commandTask = nil
         speechSynthesizer.stop()
         isProcessingCommand = true
         orbState = .thinking
-
+        
         let command = OrbCommand(id: UUID().uuidString,
                                  action: action,
                                  value: value)
         resolvedCommandText = Self.userCommandDescription(command)
         appendLog("preview command: \(Self.shortCommandDescription(command))")
         statusText = "thinking"
-
+        
         try? await Task.sleep(for: .milliseconds(1500))
         guard !Task.isCancelled else { return }
-
+        
         orbState = .settling
         statusText = "settling"
-
+        
         try? await Task.sleep(for: .milliseconds(1500))
         guard !Task.isCancelled else { return }
-
+        
         orbState = .idle
         isProcessingCommand = false
-
+        
         await speechSynthesizer.speak("Ok, I'll do what you asked.")
         guard !Task.isCancelled else { return }
-
+        
         let outcome = await commandExecutor.execute(command)
         commandOutcomeText = Self.userOutcomeDescription(outcome)
         appendLog("preview outcome: \(Self.shortOutcomeDescription(outcome))")
         statusText = outcome.status
     }
-
+    
     private func resolveAndExecute(_ transcript: String) {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTranscript.isEmpty else { return }
         guard trimmedTranscript != lastResolvedTranscript else { return }
-
+        
         lastResolvedTranscript = trimmedTranscript
         commandTask?.cancel()
         speechSynthesizer.stop()
@@ -200,7 +205,7 @@ final class ContentViewModel {
             do {
                 let command = try await commandResolver.resolve(trimmedTranscript)
                 guard !Task.isCancelled else { return }
-
+                
                 if command.action == "unknown" {
                     await MainActor.run {
                         isProcessingCommand = false
@@ -212,7 +217,7 @@ final class ContentViewModel {
                     }
                     return
                 }
-
+                
                 await MainActor.run {
                     isProcessingCommand = true
                     orbState = .thinking
@@ -220,40 +225,40 @@ final class ContentViewModel {
                     appendLog("resolver command: \(Self.shortCommandDescription(command))")
                     statusText = "thinking"
                 }
-
+                
                 if command.action == "cancel" {
                     await MainActor.run {
                         cancelCurrentCommandFlow(message: "cancelled")
                     }
                     return
                 }
-
+                
                 try? await Task.sleep(for: .milliseconds(1500))
                 guard !Task.isCancelled else { return }
-
+                
                 await MainActor.run {
                     orbState = .settling
                     statusText = "settling"
                 }
-
+                
                 try? await Task.sleep(for: .milliseconds(1500))
                 guard !Task.isCancelled else { return }
-
+                
                 await MainActor.run {
                     orbState = isListening ? .listening(0) : .idle
                     isProcessingCommand = false
                 }
-
+                
                 await speechSynthesizer.speak("Ok, I'll do what you asked.")
                 guard !Task.isCancelled else { return }
-
+                
                 await MainActor.run {
                     statusText = "executing"
                 }
-
+                
                 let outcome = await commandExecutor.execute(command)
                 guard !Task.isCancelled else { return }
-
+                
                 await MainActor.run {
                     if isProcessingCommand {
                         isProcessingCommand = false
@@ -276,7 +281,7 @@ final class ContentViewModel {
             }
         }
     }
-
+    
     nonisolated private static func userCommandDescription(_ command: OrbCommand) -> String {
         switch (command.action, command.value?.lowercased()) {
         case ("move", "left"):
@@ -300,7 +305,7 @@ final class ContentViewModel {
             return "Entendi: \(command.action)."
         }
     }
-
+    
     nonisolated private static func userOutcomeDescription(_ outcome: CommandOutcome) -> String {
         switch outcome.status {
         case "completed":
@@ -319,21 +324,21 @@ final class ContentViewModel {
             return "Resultado: \(outcome.status)."
         }
     }
-
+    
     nonisolated private static func shortCommandDescription(_ command: OrbCommand) -> String {
         if let value = command.value {
             return "\(command.action):\(value)"
         }
         return command.action
     }
-
+    
     nonisolated private static func shortOutcomeDescription(_ outcome: CommandOutcome) -> String {
         if let detail = outcome.detail {
             return "\(outcome.status) - \(detail)"
         }
         return outcome.status
     }
-
+    
     nonisolated private static func translatedColor(_ value: String) -> String {
         switch value.lowercased() {
         case "blue":
@@ -346,7 +351,7 @@ final class ContentViewModel {
             return value
         }
     }
-
+    
     nonisolated private static func translatedDetail(_ detail: String) -> String {
         switch detail {
         case "Moved left.":
@@ -369,11 +374,11 @@ final class ContentViewModel {
             return detail
         }
     }
-
+    
     private func appendLog(_ line: String) {
         print("[OrbSpeech] \(line)")
     }
-
+    
     private func cancelCurrentCommandFlow(message: String) {
         speechSynthesizer.stop()
         commandExecutor.cancel()
@@ -383,7 +388,7 @@ final class ContentViewModel {
         appendLog("command flow: \(message)")
         statusText = message
     }
-
+    
     private func scheduleResolveAfterSilenceIfNeeded(_ transcript: String) {
         let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTranscript.isEmpty else { return }
@@ -391,7 +396,7 @@ final class ContentViewModel {
             appendLog("transcript ignored synthesized acknowledgement")
             return
         }
-
+        
         pendingTranscriptTask?.cancel()
         if pendingTranscriptText != trimmedTranscript {
             appendLog("resolver: waiting for 1s silence")
@@ -403,7 +408,7 @@ final class ContentViewModel {
             } catch {
                 return
             }
-
+            
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.pendingTranscriptText = ""
@@ -411,7 +416,7 @@ final class ContentViewModel {
             }
         }
     }
-
+    
     nonisolated private static func isSynthesizedAcknowledgement(_ transcript: String) -> Bool {
         let normalized = transcript
             .lowercased()
@@ -419,13 +424,13 @@ final class ContentViewModel {
             .filter { $0.isLetter || $0.isWhitespace || $0 == "'" }
             .split(separator: " ")
             .joined(separator: " ")
-
+        
         return normalized == "ok i'll do what you asked"
-            || normalized == "okay i'll do what you asked"
-            || normalized == "ok i will do what you asked"
-            || normalized == "okay i will do what you asked"
+        || normalized == "okay i'll do what you asked"
+        || normalized == "ok i will do what you asked"
+        || normalized == "okay i will do what you asked"
     }
-
+    
     private func orbLevelToPublish(from level: Double) -> Double? {
         let normalizedLevel = level < 0.01 ? 0 : level
         let now = Date.now
@@ -434,7 +439,7 @@ final class ContentViewModel {
         guard elapsed >= 1.0 / 30.0 || levelDelta >= 0.04 else {
             return nil
         }
-
+        
         lastLevelUpdate = now
         lastOrbLevel = normalizedLevel
         return normalizedLevel
