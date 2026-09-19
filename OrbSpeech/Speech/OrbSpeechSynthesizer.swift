@@ -14,8 +14,15 @@ final class OrbSpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
     func speak(_ text: String) async {
         stop()
 
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        
+        let bestVoice = voices.first(where: { $0.language == "en-US" && $0.quality == .premium })
+        ?? voices.first(where: { $0.language == "en-US" && $0.quality == .enhanced })
+        ?? AVSpeechSynthesisVoice(language: "en-US")
+
+        
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = bestVoice
         utterance.rate = 0.48
         utterance.pitchMultiplier = 0.92
         utterance.volume = 1.0

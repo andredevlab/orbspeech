@@ -45,7 +45,7 @@ struct ContentView: View {
                             await viewModel.prepareAppleNative()
                         }
                     } label: {
-                        Text(viewModel.isAppleNativeReady ? "Apple nativo pronto" : "preparar Apple nativo")
+                        Text(viewModel.isAppleNativeReady ? "fala pronta" : "preparar fala")
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.black)
                             .frame(width: 240, height: 44)
