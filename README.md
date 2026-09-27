@@ -4,6 +4,20 @@ OrbSpeech is a small iOS prototype where a Metal-rendered orb listens to the use
 
 The goal of this implementation is to validate the end-to-end product interaction from the take-home challenge: microphone input, speech recognition, speech-to-command resolution, spoken feedback through `SpeechSynthesizing`, and orb animation. The scope was intentionally kept narrow so the full loop could be built and tested within the available time.
 
+## Build Requirements
+
+OrbSpeech is configured to build from a clean checkout with the following environment:
+
+| Requirement | Version / Notes |
+| --- | --- |
+| Xcode | 26.3 or later |
+| iOS SDK | 26.2 or later |
+| Deployment target | iOS 26.2 |
+| Scheme | `OrbSpeech` |
+| Package dependencies | Resolved by Swift Package Manager on first build |
+
+The app and test targets intentionally keep `IPHONEOS_DEPLOYMENT_TARGET` at `26.2` so the project can resolve destinations on the iOS 26.2 SDK while still building on newer Xcode releases.
+
 ## Challenge Mapping
 
 The updated brief and email ask for a small one-screen product that spans graphics, audio, on-device AI, speech, a production networking boundary, cost analysis, and a short explanation of how the work was done.

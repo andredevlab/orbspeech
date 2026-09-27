@@ -2,12 +2,18 @@ import Foundation
 import UIKit
 import Observation
 
-enum State {
-    case idle, loading, success, failed
-}
 @MainActor
 @Observable
 final class ContentViewModel {
+    
+    // MARK: - Data Structures
+    
+    enum State {
+        case idle, loading, success, failed
+    }
+    
+    // MARK: - Internal Properties
+    
     private(set) var orbState = OrbState.idle
     private(set) var orbVisualState = OrbVisualState.default
     private(set) var isListening = false
@@ -19,6 +25,8 @@ final class ContentViewModel {
     var canInteract: Bool {
         onDeviceComponentsState == .success
     }
+    
+    // MARK: - Private Properties
     
     @ObservationIgnored private let microphoneCapturing: any MicrophoneCapturing
     @ObservationIgnored private let speechRecognizer: any SpeechRecognizer
@@ -36,6 +44,8 @@ final class ContentViewModel {
         self?.orbVisualState = visualState
     }
     
+    // MARK: - Initialization
+    
     init(microphoneCapturing: any MicrophoneCapturing,
          speechRecognizer: any SpeechRecognizer,
          speechSynthesizer: any SpeechSynthesizing,
@@ -45,6 +55,8 @@ final class ContentViewModel {
         self.speechSynthesizer = speechSynthesizer
         self.commandResolver = commandResolver
     }
+    
+    // MARK: - Internal Methods
     
     func prepareOnDeviceComponents() async {
         guard await microphoneCapturing.requestPermission() else {
@@ -77,6 +89,8 @@ final class ContentViewModel {
         guard canInteract || isListening else { return }
         isListening ? stopListening() : await startListening()
     }
+    
+    // MARK: - Private Methods
     
     private func startListening() async {
         do {
