@@ -10,14 +10,3 @@ actor NetworkingResolver: CommandResolver {
         throw NetworkingResolverError.unavailable
     }
 }
-
-enum NetworkingResolverError: LocalizedError {
-    case unavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .unavailable:
-            "Networking resolver is unavailable."
-        }
-    }
-}

@@ -85,14 +85,3 @@ actor FluidAudioSpeechRecognizer: SpeechRecognizer {
         }
     }
 }
-
-enum FluidAudioSpeechRecognizerError: LocalizedError {
-    case notReady
-
-    var errorDescription: String? {
-        switch self {
-        case .notReady:
-            "Modelo CoreML local ainda nao esta preparado."
-        }
-    }
-}

@@ -82,17 +82,3 @@ actor AppleNativeSpeechRecognizer: SpeechRecognizer {
         }
     }
 }
-
-enum AppleNativeSpeechRecognizerError: LocalizedError {
-    case authorizationDenied
-    case recognizerUnavailable
-
-    var errorDescription: String? {
-        switch self {
-        case .authorizationDenied:
-            "Permissao de reconhecimento de fala negada."
-        case .recognizerUnavailable:
-            "Reconhecimento de fala Apple indisponivel neste dispositivo ou idioma."
-        }
-    }
-}
