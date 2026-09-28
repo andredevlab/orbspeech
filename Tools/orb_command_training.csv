@@ -1,0 +1,69 @@
+text,label
+move left,move_left
+go left,move_left
+shift left,move_left
+left,move_left
+slide left,move_left
+move to the left,move_left
+move right,move_right
+go right,move_right
+shift right,move_right
+right,move_right
+slide right,move_right
+move to the right,move_right
+move center,move_center
+go center,move_center
+center,move_center
+centre,move_center
+middle,move_center
+move to center,move_center
+blue,color_blue
+go blue,color_blue
+turn blue,color_blue
+make it blue,color_blue
+color blue,color_blue
+be blue,color_blue
+red,color_red
+go red,color_red
+turn red,color_red
+make it red,color_red
+color red,color_red
+be red,color_red
+green,color_green
+go green,color_green
+turn green,color_green
+make it green,color_green
+color green,color_green
+be green,color_green
+bounce,bounce
+jump,bounce
+hop,bounce
+boing,bounce
+bouncy,bounce
+spring,bounce
+cancel,cancel
+cancellation,cancel
+stop,cancel
+abort,cancel
+halt,cancel
+pause,cancel
+enough,cancel
+Cancel,cancel
+Cancellation,cancel
+Stop,cancel
+Abort,cancel
+Halt,cancel
+Pause,cancel
+Enough,cancel
+weather,unknown
+music,unknown
+calendar,unknown
+timer,unknown
+message,unknown
+camera,unknown
+volume,unknown
+brightness,unknown
+crimson,unknown
+ocean,unknown
+purple,unknown
+yellow,unknown
