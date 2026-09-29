@@ -1,6 +1,6 @@
 import Foundation
 
-actor CommandResolverOrchestrator: CommandResolver {
+actor CommandResolverFallbackOrchestrator: CommandResolver {
     private let networkingResolver: NetworkingResolver
     private let foundationModelsCommandResolver: FoundationModelsCommandResolver
     private let coreMLModelCommandResolver: CoreMLModelCommandResolver
@@ -22,62 +22,62 @@ actor CommandResolverOrchestrator: CommandResolver {
     func prewarm() async throws {
         do {
             try await foundationModelsCommandResolver.prewarm()
-            print("[OrbSpeech] resolver orchestrator: FoundationModelsCommandResolver prewarmed")
+            print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver prewarmed")
         } catch {
-            print("[OrbSpeech] resolver orchestrator: FoundationModelsCommandResolver unavailable during prewarm - \(error.localizedDescription)")
+            print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver unavailable during prewarm - \(error.localizedDescription)")
         }
         
         try await coreMLModelCommandResolver.prewarm()
-        print("[OrbSpeech] resolver orchestrator: CoreMLModelCommandResolver prewarmed")
+        print("[OrbSpeech] resolver fallback orchestrator: CoreMLModelCommandResolver prewarmed")
     }
     
     func resolve(_ transcript: String) async throws -> OrbCommand {
         do {
-            print("[OrbSpeech] resolver orchestrator: trying FoundationModelsCommandResolver with =\(transcript)")
+            print("[OrbSpeech] resolver fallback orchestrator: trying FoundationModelsCommandResolver with =\(transcript)")
             let foundationOrbCommand = try await foundationModelsCommandResolver.resolve(transcript)
-            print("[OrbSpeech] resolver orchestrator: FoundationModelsCommandResolver resolved =\(foundationOrbCommand)")
+            print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver resolved =\(foundationOrbCommand)")
             
-            /// Orchestrator understand an unknown as an error to throw, so can try the next resolver in the sequence/pipeline
+            /// Treat unknown as a fallback signal so the next resolver can try.
             if foundationOrbCommand.action == "unknown" {
-                throw CommandResolverOrchestratorError.unknownCommand
+                throw CommandResolverFallbackOrchestratorError.unknownCommand
             }
             
             return foundationOrbCommand
         } catch let error as CancellationError {
-            print("[OrbSpeech] resolver orchestrator: FoundationModelsCommandResolver Cancelled")
+            print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver Cancelled")
             throw error
         } catch {
-            print("[OrbSpeech] resolver orchestrator: FoundationModelsCommandResolver failed with =\(error.localizedDescription)")
+            print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver failed with =\(error.localizedDescription)")
         }
         
         do {
-            print("[OrbSpeech] resolver orchestrator: trying CoreMLModelCommandResolver with =\(transcript)")
+            print("[OrbSpeech] resolver fallback orchestrator: trying CoreMLModelCommandResolver with =\(transcript)")
             let coreMLOrbCommand = try await coreMLModelCommandResolver.resolve(transcript)
-            print("[OrbSpeech] resolver orchestrator: CoreMLModelCommandResolver resolved \(coreMLOrbCommand)")
+            print("[OrbSpeech] resolver fallback orchestrator: CoreMLModelCommandResolver resolved \(coreMLOrbCommand)")
             
-            /// Orchestrator understand an unknown as an error to throw, so can try the next resolver in the sequence/pipeline
+            /// Treat unknown as a fallback signal so the next resolver can try.
             if coreMLOrbCommand.action == "unknown" {
-                throw CommandResolverOrchestratorError.unknownCommand
+                throw CommandResolverFallbackOrchestratorError.unknownCommand
             }
             
             return coreMLOrbCommand
         } catch let error as CancellationError {
-            print("[OrbSpeech] resolver orchestrator: CoreMLModelCommandResolver Cancelled")
+            print("[OrbSpeech] resolver fallback orchestrator: CoreMLModelCommandResolver Cancelled")
             throw error
         }  catch {
-            print("[OrbSpeech] resolver orchestrator: CoreMLModelCommandResolver failed with =\(error.localizedDescription)")
+            print("[OrbSpeech] resolver fallback orchestrator: CoreMLModelCommandResolver failed with =\(error.localizedDescription)")
         }
         
         do {
-            print("[OrbSpeech] resolver orchestrator: trying NetworkingResolver with =\(transcript)")
+            print("[OrbSpeech] resolver fallback orchestrator: trying NetworkingResolver with =\(transcript)")
             let networkingOrbCommand = try await networkingResolver.resolve(transcript)
-            print("[OrbSpeech] resolver orchestrator: NetworkingResolver resolved = \(networkingOrbCommand)")
+            print("[OrbSpeech] resolver fallback orchestrator: NetworkingResolver resolved = \(networkingOrbCommand)")
             return networkingOrbCommand
         } catch let error as CancellationError {
-            print("[OrbSpeech] resolver orchestrator: NetworkingResolver Cancelled")
+            print("[OrbSpeech] resolver fallback orchestrator: NetworkingResolver Cancelled")
             throw error
         }  catch {
-            print("[OrbSpeech] resolver orchestrator: NetworkingResolver failed with =\(error.localizedDescription)")
+            print("[OrbSpeech] resolver fallback orchestrator: NetworkingResolver failed with =\(error.localizedDescription)")
         }
         
         return OrbCommand(id: UUID().uuidString, action: "unknown", value: nil)

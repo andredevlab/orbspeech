@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class CommandRunner {
+final class CommandFlowCoordinator {
     private enum QueueItem {
         case execute(OrbCommand)
         case refuse(OrbCommand)
@@ -11,21 +11,21 @@ final class CommandRunner {
     private let commandExecutor: OrbCommandExecutor
     
     private var pendingItems: [QueueItem] = []
-    private var runnerID: UUID?
-    private var runnerTask: Task<Void, Never>?
+    private var flowID: UUID?
+    private var flowTask: Task<Void, Never>?
     private var cancellationSpeechTask: Task<Void, Never>?
     
-    private weak var delegate: (any CommandRunnerDelegate)?
+    private weak var delegate: (any CommandFlowCoordinatorDelegate)?
     
     init(initialVisualState: OrbVisualState,
          speaker: any SpeakCommandHandling,
-         delegate: (any CommandRunnerDelegate)?) {
+         delegate: (any CommandFlowCoordinatorDelegate)?) {
         self.speaker = speaker
         self.delegate = delegate
         
         self.commandExecutor = OrbCommandExecutor(initialState: initialVisualState,
                                                   update: { [weak delegate] visualState in
-            delegate?.commandRunnerDidUpdateVisualState(visualState)
+            delegate?.commandFlowCoordinatorDidUpdateVisualState(visualState)
         })
     }
     
@@ -44,35 +44,35 @@ final class CommandRunner {
     
     func reset() {
         pendingItems = []
-        runnerID = nil
-        runnerTask?.cancel()
-        runnerTask = nil
+        flowID = nil
+        flowTask?.cancel()
+        flowTask = nil
         cancellationSpeechTask?.cancel()
         cancellationSpeechTask = nil
         speaker.stopSpeaking()
         commandExecutor.cancel()
-        delegate?.commandRunnerDidReset()
+        delegate?.commandFlowCoordinatorDidReset()
     }
     
     private func enqueue(_ item: QueueItem) {
         pendingItems.append(item)
-        startRunnerIfNeeded()
+        startFlowIfNeeded()
     }
     
-    private func startRunnerIfNeeded() {
-        guard runnerTask == nil else { return }
+    private func startFlowIfNeeded() {
+        guard flowTask == nil else { return }
         let id = UUID()
-        runnerID = id
-        runnerTask = Task { @MainActor [weak self] in
+        flowID = id
+        flowTask = Task { @MainActor [weak self] in
             await self?.runPendingItems(id: id)
         }
     }
     
     private func runPendingItems(id: UUID) async {
         defer {
-            if runnerID == id {
-                runnerTask = nil
-                runnerID = nil
+            if flowID == id {
+                flowTask = nil
+                flowID = nil
                 if !Task.isCancelled {
                     settleToListeningOrIdle()
                 }
@@ -91,47 +91,47 @@ final class CommandRunner {
     }
     
     private func execute(_ command: OrbCommand) async {
-        delegate?.commandRunnerDidStartProcessing()
+        delegate?.commandFlowCoordinatorDidStartProcessing()
         
         let speakCommand = SpeakCommand.accepted(command)
-        delegate?.commandRunnerDidLog("command speech: \(speakCommand.text)")
+        delegate?.commandFlowCoordinatorDidLog("command speech: \(speakCommand.text)")
         await speaker.speak(speakCommand)
         guard !Task.isCancelled else { return }
         
-        delegate?.commandRunnerDidStartActing()
+        delegate?.commandFlowCoordinatorDidStartActing()
         
         let outcome = await commandExecutor.execute(command)
         guard !Task.isCancelled else { return }
         
-        delegate?.commandRunnerDidLog("executor outcome: \(outcome)")
-        delegate?.commandRunnerDidUpdateStatus(outcome.status)
+        delegate?.commandFlowCoordinatorDidLog("executor outcome: \(outcome)")
+        delegate?.commandFlowCoordinatorDidUpdateStatus(outcome.status)
     }
     
     private func refuse(_ command: OrbCommand) async {
-        delegate?.commandRunnerDidStartProcessing()
+        delegate?.commandFlowCoordinatorDidStartProcessing()
         
-        delegate?.commandRunnerDidLog("command refusal: \(command)")
+        delegate?.commandFlowCoordinatorDidLog("command refusal: \(command)")
         await speaker.speak(.unsupported)
         guard !Task.isCancelled else { return }
         
-        delegate?.commandRunnerDidUpdateStatus("unsupported")
+        delegate?.commandFlowCoordinatorDidUpdateStatus("unsupported")
     }
     
     private func cancelAll() {
         pendingItems = []
-        runnerID = nil
-        runnerTask?.cancel()
-        runnerTask = nil
+        flowID = nil
+        flowTask?.cancel()
+        flowTask = nil
         cancellationSpeechTask?.cancel()
         speaker.stopSpeaking()
         commandExecutor.cancel()
-        delegate?.commandRunnerDidReset()
-        delegate?.commandRunnerDidLog("command flow: cancelled")
+        delegate?.commandFlowCoordinatorDidReset()
+        delegate?.commandFlowCoordinatorDidLog("command flow: cancelled")
         
         cancellationSpeechTask = Task { @MainActor [weak self] in
             guard let self else { return }
             
-            delegate?.commandRunnerDidStartProcessing()
+            delegate?.commandFlowCoordinatorDidStartProcessing()
             await speaker.speak(.cancelled)
             
             guard !Task.isCancelled else { return }
@@ -142,6 +142,6 @@ final class CommandRunner {
     }
     
     private func settleToListeningOrIdle(statusText: String? = nil) {
-        delegate?.commandRunnerDidSettle(statusText: statusText)
+        delegate?.commandFlowCoordinatorDidSettle(statusText: statusText)
     }
 }

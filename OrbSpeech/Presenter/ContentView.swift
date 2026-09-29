@@ -6,9 +6,9 @@ struct ContentView: View {
                                    blue: 1)
     
     @State private var viewModel = ContentViewModel(microphoneCapturing: MicrophoneService(),
-                                                    speechRecognizer: SpeechRecognizerOrchestrator(),
+                                                    speechRecognizer: SpeechRecognizerFallbackOrchestrator(),
                                                     speechSynthesizer: OrbSpeechSynthesizer(),
-                                                    commandResolver: CommandResolverOrchestrator())
+                                                    commandResolver: CommandResolverFallbackOrchestrator())
     
     var body: some View {
         ZStack {

@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 final class VoiceCommandCoordinator {
     private let commandResolver: any CommandResolver
-    private let commandRunner: CommandRunner
+    private let commandFlowCoordinator: CommandFlowCoordinator
     
     private let transcriptSegmenter = TranscriptSegmenter()
     private var resolveTasks: [UUID: Task<Void, Never>] = [:]
@@ -14,10 +14,10 @@ final class VoiceCommandCoordinator {
     private weak var delegate: (any VoiceCommandCoordinatorDelegate)?
     
     init(commandResolver: any CommandResolver,
-         commandRunner: CommandRunner,
+         commandFlowCoordinator: CommandFlowCoordinator,
          delegate: (any VoiceCommandCoordinatorDelegate)?) {
         self.commandResolver = commandResolver
-        self.commandRunner = commandRunner
+        self.commandFlowCoordinator = commandFlowCoordinator
         self.delegate = delegate
     }
     
@@ -39,7 +39,7 @@ final class VoiceCommandCoordinator {
         transcriptSegmenter.reset()
         lastResolvedTranscript = ""
         cancelResolveTasks()
-        commandRunner.reset()
+        commandFlowCoordinator.reset()
     }
     
     private func debounceTranscriptResolution(_ transcript: String) {
@@ -89,13 +89,13 @@ final class VoiceCommandCoordinator {
                 if command.action == "cancel" {
                     self.cancelResolveTasks(except: taskID)
                 }
-                self.commandRunner.submit(command)
+                self.commandFlowCoordinator.submit(command)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.delegate?.voiceCommandCoordinatorDidLog("resolver error: \(error.localizedDescription)")
-                self.commandRunner.submit(OrbCommand(id: UUID().uuidString,
-                                                     action: "unknown",
-                                                     value: nil))
+                self.commandFlowCoordinator.submit(OrbCommand(id: UUID().uuidString,
+                                                             action: "unknown",
+                                                             value: nil))
             }
         }
         resolveTasks[taskID] = task

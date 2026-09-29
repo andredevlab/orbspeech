@@ -1,6 +1,6 @@
 import Foundation
 
-enum SpeechRecognizerOrchestratorError: LocalizedError {
+enum SpeechRecognizerFallbackOrchestratorError: LocalizedError {
     case noActiveRecognizer
 
     var errorDescription: String? {

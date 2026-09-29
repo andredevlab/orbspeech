@@ -36,15 +36,15 @@ final class ContentViewModel {
     @ObservationIgnored private var lastOrbLevel = 0.0
     @ObservationIgnored private var isListeningLevelUpdatesSuspended = false
     
-    @ObservationIgnored private lazy var commandRunner = {
-        CommandRunner(initialVisualState: orbVisualState,
-                      speaker: self,
-                      delegate: self)
+    @ObservationIgnored private lazy var commandFlowCoordinator = {
+        CommandFlowCoordinator(initialVisualState: orbVisualState,
+                               speaker: self,
+                               delegate: self)
     }()
     
     @ObservationIgnored private lazy var voiceCommandCoordinator = {
         VoiceCommandCoordinator(commandResolver: commandResolver,
-                                commandRunner: commandRunner,
+                                commandFlowCoordinator: commandFlowCoordinator,
                                 delegate: self)
     }()
     
@@ -223,38 +223,38 @@ extension ContentViewModel: VoiceCommandCoordinatorDelegate {
     }
 }
 
-// MARK: - CommandRunnerDelegate
+// MARK: - CommandFlowCoordinatorDelegate
 
-extension ContentViewModel: CommandRunnerDelegate {
-    func commandRunnerDidStartProcessing() {
+extension ContentViewModel: CommandFlowCoordinatorDelegate {
+    func commandFlowCoordinatorDidStartProcessing() {
         isListeningLevelUpdatesSuspended = true
     }
     
-    func commandRunnerDidReset() {
+    func commandFlowCoordinatorDidReset() {
         isListeningLevelUpdatesSuspended = false
     }
     
-    func commandRunnerDidStartActing() {
+    func commandFlowCoordinatorDidStartActing() {
         orbState = .acting
         statusText = OrbState.acting.description
     }
     
-    func commandRunnerDidSettle(statusText text: String?) {
+    func commandFlowCoordinatorDidSettle(statusText text: String?) {
         isListeningLevelUpdatesSuspended = false
         let state: OrbState = isListening ? .listening(0) : .idle
         orbState = state
         statusText = text ?? state.description
     }
     
-    func commandRunnerDidUpdateStatus(_ status: String) {
+    func commandFlowCoordinatorDidUpdateStatus(_ status: String) {
         statusText = status
     }
     
-    func commandRunnerDidUpdateVisualState(_ visualState: OrbVisualState) {
+    func commandFlowCoordinatorDidUpdateVisualState(_ visualState: OrbVisualState) {
         orbVisualState = visualState
     }
     
-    func commandRunnerDidLog(_ message: String) {
+    func commandFlowCoordinatorDidLog(_ message: String) {
         appendLog(message)
     }
 }

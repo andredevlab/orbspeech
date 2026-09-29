@@ -93,7 +93,7 @@ The ViewModel initializes and coordinates three main on-device components.
 
 The same audio capture path feeds both the visual feedback and transcription pipeline.
 
-This component is also the right boundary for `AVAudioSession` ownership. When capture starts, `MicrophoneService` configures the shared audio session with `.playAndRecord`, uses `.measurement` mode, routes output to the speaker, and activates the session. In practice, that means OrbSpeech is asking the operating system for the microphone and audio session; if another app is playing audio, iOS may pause or duck that app depending on the active session policies.
+This component is also the right boundary for `AVAudioSession` ownership. When capture starts, `MicrophoneService` configures the shared audio session with `.playAndRecord`, uses `.voiceChat` mode, routes output to the speaker, and activates the session. In practice, that means OrbSpeech is asking the operating system for the microphone and audio session; if another app is playing audio, iOS may pause or duck that app depending on the active session policies.
 
 When capture stops, the service removes the audio tap, stops the engine, clears its handlers, and deactivates the session with `.notifyOthersOnDeactivation`. That tells the operating system that OrbSpeech is done with the audio resource, allowing interrupted audio from another app to resume when iOS decides it can.
 
@@ -103,7 +103,7 @@ The interruption model belongs behind `MicrophoneCapturing` as well. If another 
 
 `SpeechRecognizer` receives audio buffers and emits transcription results.
 
-`SpeechRecognizerOrchestrator` decides which recognizer implementation should be used. Apple’s native speech stack is attempted first, and FluidAudio can be used as a fallback behind the same protocol.
+`SpeechRecognizerFallbackOrchestrator` decides which recognizer implementation should be used. Apple’s native speech stack is attempted first, and FluidAudio can be used as a fallback behind the same protocol.
 
 This orchestration matters because the app should still work on devices that do not have Apple Intelligence or FoundationModels available, including older iPhones before the Apple Intelligence hardware cutoff. The speech-recognition path should not depend on those capabilities being present. Apple’s native speech recognizer is the first choice because it is integrated with the system, has low setup cost, and is the most natural default when on-device recognition is available for the current device and locale.
 
@@ -127,17 +127,17 @@ The synthesizer uses `AVSpeechSynthesizer` and picks the best available `en-US` 
 
 ## Speech-To-Command Flow
 
-The ViewModel receives transcription updates from the speech recognizer and waits for one second without new words. That silence window is treated as the end of the user’s utterance.
+The ViewModel receives transcription updates from the speech recognizer and forwards them to `VoiceCommandCoordinator`. The coordinator segments accumulated ASR text and waits for one second without new words. That silence window is treated as the end of the user’s utterance.
 
 After that one-second silence:
 
-1. The ViewModel sends the final text to `CommandResolver`.
-2. `CommandResolverOrchestrator` attempts to resolve the text into an `OrbCommand`.
+1. `VoiceCommandCoordinator` sends the final text to `CommandResolver`.
+2. `CommandResolverFallbackOrchestrator` attempts to resolve the text into an `OrbCommand`.
 3. The resolver decides what command the text means, but it does not directly mutate the orb.
-4. If the command is valid, the ViewModel uses `SpeechSynthesizing` to make the orb respond out loud.
-5. The ViewModel then asks `OrbCommandExecutor` to apply the command.
+4. `CommandFlowCoordinator` queues the resolved command and asks the ViewModel to speak accepted, cancelled, or unsupported responses.
+5. `CommandFlowCoordinator` then asks `OrbCommandExecutor` to apply executable commands.
 
-The command resolver is isolated behind a protocol so different strategies can be composed without changing the ViewModel. The current design supports an orchestrated resolver pipeline, including on-device model resolution and fallback strategies.
+The command resolver is isolated behind a protocol so different strategies can be composed without changing the ViewModel. The current design supports fallback orchestration across on-device model resolution and the networking boundary.
 
 Only a small set of commands is mapped right now. That was intentional: the priority was to validate the full speech-to-action loop quickly rather than spend the limited time expanding command coverage.
 
@@ -234,11 +234,9 @@ The expensive parts of the app are not only the shader. The microphone is always
 
 ## Tradeoffs
 
-The current implementation keeps orchestration in the ViewModel because it makes the feature easy to inspect and validate in a small prototype.
+The current implementation keeps presentation state in the ViewModel and moves the command-processing flow into dedicated coordinators. `VoiceCommandCoordinator` owns transcript segmentation, debounce, resolver tasks, and command submission. `CommandFlowCoordinator` owns command queueing, spoken command responses, execution, refusal, and cancellation.
 
-With more time, I would move more of the command-processing flow into a dedicated coordinator. In particular, `CommandResolverOrchestrator` could expose progress events or a small state API so the orb can enter `.thinking` only when the resolver actually needs longer-running work.
-
-That matters for fallback behavior. For example, if on-device resolution fails and the app falls back to a network request, the orb should enter `.thinking` while that request is in flight. Today, that kind of UI state decision still belongs mostly to the ViewModel.
+The ViewModel still adapts coordinator events into UI state such as `.thinking`, `.speaking`, `.acting`, and `.listening`. That keeps UIKit/SwiftUI-facing state local while leaving command semantics outside the presentation layer.
 
 I would also add:
 

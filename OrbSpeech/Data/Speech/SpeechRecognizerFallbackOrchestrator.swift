@@ -1,6 +1,6 @@
 import Foundation
 
-actor SpeechRecognizerOrchestrator: SpeechRecognizer {
+actor SpeechRecognizerFallbackOrchestrator: SpeechRecognizer {
     private enum ActiveRecognizer {
         case appleNative
         case fluidAudio
@@ -25,12 +25,12 @@ actor SpeechRecognizerOrchestrator: SpeechRecognizer {
         do {
             try await appleNativeSpeechRecognizer.prepare()
             activeRecognizer = .appleNative
-            print("[OrbSpeech] speech orchestrator: Apple Speech ready")
+            print("[OrbSpeech] speech recognizer fallback orchestrator: Apple Speech ready")
         } catch {
-            print("[OrbSpeech] speech orchestrator: Apple Speech unavailable, trying FluidAudio - \(error.localizedDescription)")
+            print("[OrbSpeech] speech recognizer fallback orchestrator: Apple Speech unavailable, trying FluidAudio - \(error.localizedDescription)")
             try await fluidAudioSpeechRecognizer.prepare()
             activeRecognizer = .fluidAudio
-            print("[OrbSpeech] speech orchestrator: FluidAudio ready")
+            print("[OrbSpeech] speech recognizer fallback orchestrator: FluidAudio ready")
         }
     }
 
@@ -45,7 +45,7 @@ actor SpeechRecognizerOrchestrator: SpeechRecognizer {
         case .fluidAudio:
             try await fluidAudioSpeechRecognizer.startStreaming(onUpdate: onUpdate)
         case nil:
-            throw SpeechRecognizerOrchestratorError.noActiveRecognizer
+            throw SpeechRecognizerFallbackOrchestratorError.noActiveRecognizer
         }
     }
 
