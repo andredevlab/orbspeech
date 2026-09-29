@@ -30,23 +30,4 @@ let metadata = MLModelMetadata(
 
 try classifier.write(to: outputURL, metadata: metadata)
 
-let smokeInputs = [
-    "cancel",
-    "cancellation",
-    "stop",
-    "abort",
-    "halt",
-    "pause",
-    "enough",
-    "move left",
-    "shift right",
-    "centre",
-    "weather"
-]
-
-for input in smokeInputs {
-    let prediction = try classifier.prediction(from: input)
-    print("\(input): \(prediction)")
-}
-
 print("Wrote \(outputURL.path)")

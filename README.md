@@ -12,11 +12,11 @@ OrbSpeech is configured to build from a clean checkout with the following enviro
 | --- | --- |
 | Xcode | 26.3 or later |
 | iOS SDK | 26.2 or later |
-| Deployment target | iOS 26.2 |
+| Deployment target | iOS 26.0 |
 | Scheme | `OrbSpeech` |
 | Package dependencies | Resolved by Swift Package Manager on first build |
 
-The app and test targets intentionally keep `IPHONEOS_DEPLOYMENT_TARGET` at `26.2` so the project can resolve destinations on the iOS 26.2 SDK while still building on newer Xcode releases.
+The app and test targets intentionally keep `IPHONEOS_DEPLOYMENT_TARGET` at `26.0` so the project can resolve destinations on the iOS 26.2 SDK while still building on newer Xcode releases.
 
 ## Challenge Mapping
 
@@ -220,6 +220,12 @@ This is a complete end-to-end feature slice:
 - Metal orb rendering
 
 The implementation includes the core behavior needed to validate the challenge without expanding into a larger production architecture.
+
+## Tests
+
+The unit test target includes a Swift Testing regression test for the bundled Core ML command classifier. `OrbCommandClassifierTests` loads the compiled `OrbCommandClassifier.mlmodelc` from the host app bundle and verifies both supported commands and refusal cases.
+
+The test intentionally covers examples that could break the product contract: valid movement and cancellation requests should still resolve to their expected labels, while ambiguous movement requests and unsupported color requests should resolve to `unknown`. That keeps the classifier from silently regressing into acting on commands such as `move`, `move top`, `go crimson`, or `can you become the colour of the ocean`.
 
 I intentionally did not add detailed runtime instrumentation for model latency, memory, power, or token/model usage inside the app. That would be useful, but it would have taken time away from validating the primary interaction loop.
 
