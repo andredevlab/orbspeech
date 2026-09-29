@@ -100,17 +100,16 @@ final class MicrophoneService: MicrophoneCapturing, @unchecked Sendable {
     }
     
     private func handle(buffer: AVAudioPCMBuffer) {
-        if let copiedBuffer = buffer.copyPCMBuffer() {
-            bufferHandler?(copiedBuffer)
-        }
+        guard let copiedBuffer = buffer.copyPCMBuffer() else { return }
+        bufferHandler?(copiedBuffer)
         
-        guard let channelData = buffer.floatChannelData else { return }
-        
-        let frameLength = Int(buffer.frameLength)
-        let channelCount = Int(buffer.format.channelCount)
+        let frameLength = Int(copiedBuffer.frameLength)
+        let channelCount = Int(copiedBuffer.format.channelCount)
         guard frameLength > 0, channelCount > 0 else { return }
         
-        queue.async { [weak self] in
+        queue.async { [weak self, copiedBuffer] in
+            guard let channelData = copiedBuffer.floatChannelData else { return }
+            
             var sumSquares: Double = 0
             let sampleCount = frameLength * channelCount
             
