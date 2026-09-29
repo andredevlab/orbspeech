@@ -8,7 +8,7 @@ final class ContentViewModel {
     
     // MARK: - Data Structures
     
-    enum State {
+    enum OnDeviceComponentsState {
         case idle, loading, success, failed
     }
     
@@ -19,7 +19,7 @@ final class ContentViewModel {
     private(set) var isListening = false
     private(set) var statusText = "idle"
     
-    private(set) var onDeviceComponentsState: State = .idle
+    private(set) var onDeviceComponentsState: OnDeviceComponentsState = .idle
     
     var canInteract: Bool {
         onDeviceComponentsState == .success
