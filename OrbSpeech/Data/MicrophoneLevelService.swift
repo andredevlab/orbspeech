@@ -23,7 +23,7 @@ final class MicrophoneService: MicrophoneCapturing, @unchecked Sendable {
         smoothedLevel = 0
         
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker])
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
         
