@@ -31,14 +31,12 @@ final class CommandFlowCoordinator {
     
     func submit(_ command: OrbCommand) {
         switch command.action {
-        case "cancel":
+        case .cancel:
             cancelAll()
-        case "unknown":
+        case .unknown:
             enqueue(.refuse(command))
-        case "move", "color", "bounce":
+        case .move, .color, .bounce:
             enqueue(.execute(command))
-        default:
-            enqueue(.refuse(command))
         }
     }
     
@@ -114,7 +112,7 @@ final class CommandFlowCoordinator {
         await speaker.speak(.unsupported)
         guard !Task.isCancelled else { return }
         
-        delegate?.commandFlowCoordinatorDidUpdateStatus("unsupported")
+        delegate?.commandFlowCoordinatorDidUpdateStatus(.unsupported)
     }
     
     private func cancelAll() {
@@ -136,7 +134,7 @@ final class CommandFlowCoordinator {
             
             guard !Task.isCancelled else { return }
             
-            settleToListeningOrIdle(statusText: "cancelled")
+            settleToListeningOrIdle(statusText: SpeakCommand.cancelled.text)
             cancellationSpeechTask = nil
         }
     }

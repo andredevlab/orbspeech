@@ -38,7 +38,7 @@ actor CommandResolverFallbackOrchestrator: CommandResolver {
             print("[OrbSpeech] resolver fallback orchestrator: FoundationModelsCommandResolver resolved =\(foundationOrbCommand)")
             
             /// Treat unknown as a fallback signal so the next resolver can try.
-            if foundationOrbCommand.action == "unknown" {
+            if foundationOrbCommand.action == .unknown {
                 throw CommandResolverFallbackOrchestratorError.unknownCommand
             }
             
@@ -56,7 +56,7 @@ actor CommandResolverFallbackOrchestrator: CommandResolver {
             print("[OrbSpeech] resolver fallback orchestrator: CoreMLModelCommandResolver resolved \(coreMLOrbCommand)")
             
             /// Treat unknown as a fallback signal so the next resolver can try.
-            if coreMLOrbCommand.action == "unknown" {
+            if coreMLOrbCommand.action == .unknown {
                 throw CommandResolverFallbackOrchestratorError.unknownCommand
             }
             
@@ -80,6 +80,6 @@ actor CommandResolverFallbackOrchestrator: CommandResolver {
             print("[OrbSpeech] resolver fallback orchestrator: NetworkingResolver failed with =\(error.localizedDescription)")
         }
         
-        return OrbCommand(id: UUID().uuidString, action: "unknown", value: nil)
+        return OrbCommand(action: .unknown)
     }
 }

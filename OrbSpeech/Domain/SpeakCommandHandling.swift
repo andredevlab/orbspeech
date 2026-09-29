@@ -20,18 +20,21 @@ enum SpeakCommand {
     }
     
     private func acknowledgement(for command: OrbCommand) -> String {
-        switch (command.action, command.value?.lowercased()) {
-        case ("move", "left"):
-            return "Ok, moving left."
-        case ("move", "right"):
-            return "Ok, moving right."
-        case ("move", "center"), ("move", "middle"):
-            return "Ok, centering."
-        case ("color", let value?):
-            return "Ok, changing color to \(value)."
-        case ("bounce", _):
+        switch command.action {
+        case .move:
+            guard let target = OrbMoveTarget(command.value) else { return "Ok." }
+            switch target {
+            case .left, .right:
+                return "Ok, moving \(target.rawValue)."
+            case .center, .middle:
+                return "Ok, centering."
+            }
+        case .color:
+            guard let target = OrbColorTarget(command.value) else { return "Ok." }
+            return "Ok, changing color to \(target.rawValue)."
+        case .bounce:
             return "Ok, bouncing."
-        default:
+        case .cancel, .unknown:
             return "Ok."
         }
     }

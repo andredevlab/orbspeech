@@ -86,16 +86,14 @@ final class VoiceCommandCoordinator {
                 guard !Task.isCancelled else { return }
                 
                 self.delegate?.voiceCommandCoordinatorDidLog("resolver command: \(command)")
-                if command.action == "cancel" {
+                if command.action == .cancel {
                     self.cancelResolveTasks(except: taskID)
                 }
                 self.commandFlowCoordinator.submit(command)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.delegate?.voiceCommandCoordinatorDidLog("resolver error: \(error.localizedDescription)")
-                self.commandFlowCoordinator.submit(OrbCommand(id: UUID().uuidString,
-                                                             action: "unknown",
-                                                             value: nil))
+                self.commandFlowCoordinator.submit(OrbCommand(action: .unknown))
             }
         }
         resolveTasks[taskID] = task

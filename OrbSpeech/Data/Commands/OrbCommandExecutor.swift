@@ -1,5 +1,48 @@
 import Foundation
 
+private extension OrbMoveTarget {
+    var xOffset: Double {
+        switch self {
+        case .left:
+            return -110
+        case .center, .middle:
+            return 0
+        case .right:
+            return 110
+        }
+    }
+}
+
+private extension OrbColorTarget {
+    func applying(to visualState: OrbVisualState) -> OrbVisualState {
+        var target = visualState
+        switch self {
+        case .blue:
+            target.baseRed = 0.02
+            target.baseGreen = 0.07
+            target.baseBlue = 0.24
+            target.edgeRed = 0.20
+            target.edgeGreen = 0.45
+            target.edgeBlue = 1.0
+        case .red:
+            target.baseRed = 0.26
+            target.baseGreen = 0.03
+            target.baseBlue = 0.07
+            target.edgeRed = 1.0
+            target.edgeGreen = 0.20
+            target.edgeBlue = 0.28
+        case .green:
+            target.baseRed = 0.03
+            target.baseGreen = 0.20
+            target.baseBlue = 0.10
+            target.edgeRed = 0.22
+            target.edgeGreen = 0.92
+            target.edgeBlue = 0.50
+        }
+        return target
+    }
+}
+
 @MainActor
 final class OrbCommandExecutor {
     private var animationTask: Task<CommandOutcome, Never>?
@@ -39,43 +82,35 @@ final class OrbCommandExecutor {
     
     private func run(_ command: OrbCommand) async -> CommandOutcome {
         switch command.action {
-        case "move":
+        case .move:
             return await move(command)
-        case "color":
+        case .color:
             return await color(command)
-        case "bounce":
+        case .bounce:
             return await bounce(command)
-        default:
+        case .cancel, .unknown:
             return CommandOutcome(id: command.id,
-                                  status: "unsupported",
-                                  detail: "The orb cannot perform action \"\(command.action)\".")
+                                  status: .unsupported,
+                                  detail: "The orb cannot perform action \"\(command.action.rawValue)\".")
         }
     }
     
     private func move(_ command: OrbCommand) async -> CommandOutcome {
-        guard let value = command.value?.lowercased() else {
+        guard let targetValue = command.value?.lowercased() else {
             return CommandOutcome(id: command.id,
-                                  status: "unsupported",
+                                  status: .unsupported,
                                   detail: "Move needs a target like left, center, or right.")
         }
         
-        let targetX: Double
-        switch value {
-        case "left":
-            targetX = -110
-        case "center", "middle":
-            targetX = 0
-        case "right":
-            targetX = 110
-        default:
+        guard let moveTarget = OrbMoveTarget(targetValue) else {
             return CommandOutcome(id: command.id,
-                                  status: "unsupported",
-                                  detail: "Move target \"\(value)\" is not supported.")
+                                  status: .unsupported,
+                                  detail: "Move target \"\(targetValue)\" is not supported.")
         }
         
         let start = visualState
         var target = visualState
-        target.xOffset = targetX
+        target.xOffset = moveTarget.xOffset
         target.yOffset = 0
         target.bounce = 0
         
@@ -85,55 +120,33 @@ final class OrbCommandExecutor {
         }
         
         return completed
-        ? CommandOutcome(id: command.id, status: "completed", detail: "Moved \(value).")
-        : CommandOutcome(id: command.id, status: "interrupted", detail: "Move was interrupted.")
+        ? CommandOutcome(id: command.id, status: .completed, detail: "Moved \(moveTarget.spokenValue).")
+        : CommandOutcome(id: command.id, status: .interrupted, detail: "Move was interrupted.")
     }
     
     private func color(_ command: OrbCommand) async -> CommandOutcome {
-        guard let value = command.value?.lowercased() else {
+        guard let targetValue = command.value?.lowercased() else {
             return CommandOutcome(id: command.id,
-                                  status: "unsupported",
+                                  status: .unsupported,
                                   detail: "Color needs a target like blue, red, or green.")
         }
         
-        var target = visualState
-        switch value {
-        case "blue":
-            target.baseRed = 0.02
-            target.baseGreen = 0.07
-            target.baseBlue = 0.24
-            target.edgeRed = 0.20
-            target.edgeGreen = 0.45
-            target.edgeBlue = 1.0
-        case "red":
-            target.baseRed = 0.26
-            target.baseGreen = 0.03
-            target.baseBlue = 0.07
-            target.edgeRed = 1.0
-            target.edgeGreen = 0.20
-            target.edgeBlue = 0.28
-        case "green":
-            target.baseRed = 0.03
-            target.baseGreen = 0.20
-            target.baseBlue = 0.10
-            target.edgeRed = 0.22
-            target.edgeGreen = 0.92
-            target.edgeBlue = 0.50
-        default:
+        guard let colorTarget = OrbColorTarget(targetValue) else {
             return CommandOutcome(id: command.id,
-                                  status: "unsupported",
-                                  detail: "Color \"\(value)\" is not supported.")
+                                  status: .unsupported,
+                                  detail: "Color \"\(targetValue)\" is not supported.")
         }
         
+        let target = colorTarget.applying(to: visualState)
         let completed = await animate(from: visualState,
                                       to: target,
                                       duration: 0.55)
         return completed
         ? CommandOutcome(id: command.id,
-                         status: "completed",
-                         detail: "Changed color to \(value).")
+                         status: .completed,
+                         detail: "Changed color to \(colorTarget.rawValue).")
         : CommandOutcome(id: command.id,
-                         status: "interrupted",
+                         status: .interrupted,
                          detail: "Color change was interrupted.")
     }
     
@@ -144,17 +157,17 @@ final class OrbCommandExecutor {
         let grew = await animate(from: base, to: up, duration: 0.18)
         guard grew else {
             return CommandOutcome(id: command.id,
-                                  status: "interrupted",
+                                  status: .interrupted,
                                   detail: "Bounce was interrupted.")
         }
         
         let settled = await animate(from: up, to: base, duration: 0.34)
         return settled
         ? CommandOutcome(id: command.id,
-                         status: "completed",
+                         status: .completed,
                          detail: "Bounced.")
         : CommandOutcome(id: command.id,
-                         status: "interrupted",
+                         status: .interrupted,
                          detail: "Bounce was interrupted.")
     }
     

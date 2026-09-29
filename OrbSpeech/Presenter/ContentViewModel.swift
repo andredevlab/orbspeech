@@ -6,18 +6,12 @@ import Observation
 @Observable
 final class ContentViewModel {
     
-    // MARK: - Data Structures
-    
-    enum OnDeviceComponentsState {
-        case idle, loading, success, failed
-    }
-    
     // MARK: - Internal Properties
     
     private(set) var orbState = OrbState.idle
     private(set) var orbVisualState = OrbVisualState.default
     private(set) var isListening = false
-    private(set) var statusText = "idle"
+    private(set) var statusText = ViewStatus.idle.text
     
     private(set) var onDeviceComponentsState: OnDeviceComponentsState = .idle
     
@@ -36,6 +30,7 @@ final class ContentViewModel {
     @ObservationIgnored private var lastOrbLevel = 0.0
     @ObservationIgnored private var isListeningLevelUpdatesSuspended = false
     @ObservationIgnored private var shouldResumeListeningAfterForeground = false
+    @ObservationIgnored private var listeningSessionState = ListeningSessionState.idle
     
     @ObservationIgnored private lazy var commandFlowCoordinator = {
         CommandFlowCoordinator(initialVisualState: orbVisualState,
@@ -73,7 +68,7 @@ final class ContentViewModel {
     
     func prepareOnDeviceComponents() async {
         guard await microphoneCapturing.requestPermission() else {
-            statusText = "You should allow microphone permission."
+            setStatus(.microphonePermissionRequired)
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 await UIApplication.shared.open(url)
             }
@@ -92,7 +87,7 @@ final class ContentViewModel {
             try? await commandResolver.prewarm()
             appendLog("On-Device prepare: ready")
         } catch {
-            statusText = error.localizedDescription
+            setStatus(.message(error.localizedDescription))
             appendLog("On-Device prepare error: \(error.localizedDescription)")
             onDeviceComponentsState = .failed
         }
@@ -111,7 +106,7 @@ final class ContentViewModel {
     func pauseListeningForBackground() {
         guard isListening else { return }
         shouldResumeListeningAfterForeground = true
-        stopListening(statusText: "paused",
+        stopListening(status: .paused,
                       logLine: "listening: paused for background")
     }
     
@@ -133,11 +128,13 @@ final class ContentViewModel {
         do {
             try await bindComponents()
             isListening = true
+            listeningSessionState = .active
             appendLog("listening: started")
             await speakListeningConfirmation()
         } catch {
             isListening = false
-            statusText = error.localizedDescription
+            listeningSessionState = .idle
+            setStatus(.message(error.localizedDescription))
             appendLog("listening error: \(error.localizedDescription)")
             orbState = .idle
         }
@@ -158,7 +155,7 @@ final class ContentViewModel {
                 guard let orbLevel = self.orbLevelToPublish(from: level) else { return }
                 guard self.canPublishListeningLevel else { return }
                 self.orbState = .listening(orbLevel)
-                self.statusText = self.orbState.description
+                self.setStatus(.orb(self.orbState))
             }
         }, bufferHandler: { [weak self] buffer in
             Task { @MainActor [weak self] in
@@ -173,7 +170,7 @@ final class ContentViewModel {
         })
     }
     
-    private func stopListening(statusText nextStatusText: String? = nil,
+    private func stopListening(status nextStatus: ViewStatus? = nil,
                                logLine: String = "listening: stopped") {
         microphoneCapturing.stop()
         voiceCommandCoordinator.reset()
@@ -181,8 +178,9 @@ final class ContentViewModel {
             _ = await speechRecognizer.finishStreaming()
         }
         isListening = false
+        listeningSessionState = .idle
         orbState = .idle
-        statusText = nextStatusText ?? orbState.description
+        setStatus(nextStatus ?? .orb(orbState))
         appendLog(logLine)
     }
     
@@ -197,15 +195,17 @@ final class ContentViewModel {
             }
             
             isListening = false
+            listeningSessionState = .interrupted
             isListeningLevelUpdatesSuspended = false
             orbState = .idle
-            statusText = "interrupted"
+            setStatus(.interrupted)
             appendLog("listening: interrupted by audio session")
         case .ended(let shouldResume):
             appendLog("listening: audio session interruption ended, shouldResume=\(shouldResume)")
-            guard !isListening, statusText == "interrupted" else { return }
+            guard !isListening, listeningSessionState == .interrupted else { return }
+            listeningSessionState = .idle
             orbState = .idle
-            statusText = "ready"
+            setStatus(.ready)
         }
     }
     
@@ -238,13 +238,17 @@ final class ContentViewModel {
         
         isListeningLevelUpdatesSuspended = false
         orbState = .listening(0)
-        statusText = orbState.description
+        setStatus(.orb(orbState))
     }
     
     private func speakText(_ text: String) async {
         orbState = .speaking
-        statusText = OrbState.speaking.description
+        setStatus(.orb(.speaking))
         await speechSynthesizer.speak(text)
+    }
+    
+    private func setStatus(_ status: ViewStatus) {
+        statusText = status.text
     }
 }
 
@@ -266,7 +270,7 @@ extension ContentViewModel: VoiceCommandCoordinatorDelegate {
     func voiceCommandCoordinatorDidStartResolving() {
         isListeningLevelUpdatesSuspended = true
         orbState = .thinking
-        statusText = OrbState.thinking.description
+        setStatus(.orb(.thinking))
     }
     
     func voiceCommandCoordinatorDidLog(_ message: String) {
@@ -287,18 +291,22 @@ extension ContentViewModel: CommandFlowCoordinatorDelegate {
     
     func commandFlowCoordinatorDidStartActing() {
         orbState = .acting
-        statusText = OrbState.acting.description
+        setStatus(.orb(.acting))
     }
     
     func commandFlowCoordinatorDidSettle(statusText text: String?) {
         isListeningLevelUpdatesSuspended = false
         let state: OrbState = isListening ? .listening(0) : .idle
         orbState = state
-        statusText = text ?? state.description
+        if let text {
+            setStatus(.message(text))
+        } else {
+            setStatus(.orb(state))
+        }
     }
     
-    func commandFlowCoordinatorDidUpdateStatus(_ status: String) {
-        statusText = status
+    func commandFlowCoordinatorDidUpdateStatus(_ status: CommandOutcomeStatus) {
+        setStatus(.commandOutcome(status))
     }
     
     func commandFlowCoordinatorDidUpdateVisualState(_ visualState: OrbVisualState) {

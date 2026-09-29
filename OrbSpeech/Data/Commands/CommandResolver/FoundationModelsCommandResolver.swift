@@ -4,6 +4,13 @@ import FoundationModels
 actor FoundationModelsCommandResolver: CommandResolver {
     private let model: SystemLanguageModel
     private let session: LanguageModelSession
+    private nonisolated static let supportedActionValues = [
+        OrbCommandAction.move.rawValue,
+        OrbCommandAction.color.rawValue,
+        OrbCommandAction.bounce.rawValue,
+        OrbCommandAction.cancel.rawValue,
+        OrbCommandAction.unknown.rawValue
+    ]
     
     init() {
         let model = SystemLanguageModel(useCase: .contentTagging)
@@ -74,7 +81,7 @@ actor FoundationModelsCommandResolver: CommandResolver {
                             GenerationSchema.Property(name: "action",
                                                       description: "The requested orb action.",
                                                       type: String.self,
-                                                      guides: [.anyOf(["move", "color", "bounce", "cancel", "unknown"])]),
+                                                      guides: [.anyOf(supportedActionValues)]),
                             GenerationSchema.Property(name: "value",
                                                       description: "The target value for the action, or nil if no value is needed.",
                                                       type: String?.self)
@@ -91,12 +98,7 @@ actor FoundationModelsCommandResolver: CommandResolver {
         }
     }
     
-    nonisolated private static func normalizedAction(_ action: String) -> String {
-        switch action {
-        case "move", "color", "bounce", "cancel":
-            action
-        default:
-            "unknown"
-        }
+    nonisolated private static func normalizedAction(_ action: String) -> OrbCommandAction {
+        OrbCommandAction(rawValue: action) ?? .unknown
     }
 }

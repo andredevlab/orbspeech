@@ -10,7 +10,9 @@ actor CoreMLModelCommandResolver: CommandResolver {
     }
 
     func resolve(_ transcript: String) async throws -> OrbCommand {
-        let cleanTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanTranscript = transcript
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
         guard !cleanTranscript.isEmpty else {
             throw CoreMLModelCommandResolverError.emptyTranscript
         }
@@ -41,26 +43,27 @@ actor CoreMLModelCommandResolver: CommandResolver {
     }
 
     nonisolated private static func command(for label: String) -> OrbCommand {
-        switch label {
-        case "move_left":
-            return OrbCommand(id: UUID().uuidString, action: "move", value: "left")
-        case "move_right":
-            return OrbCommand(id: UUID().uuidString, action: "move", value: "right")
-        case "move_center":
-            return OrbCommand(id: UUID().uuidString, action: "move", value: "center")
-        case "color_blue":
-            return OrbCommand(id: UUID().uuidString, action: "color", value: "blue")
-        case "color_red":
-            return OrbCommand(id: UUID().uuidString, action: "color", value: "red")
-        case "color_green":
-            return OrbCommand(id: UUID().uuidString, action: "color", value: "green")
-        case "bounce":
-            return OrbCommand(id: UUID().uuidString, action: "bounce", value: nil)
-        case "cancel":
-            return OrbCommand(id: UUID().uuidString, action: "cancel", value: nil)
-        default:
-            return OrbCommand(id: UUID().uuidString, action: "unknown", value: nil)
+        guard let commandLabel = CoreMLCommandLabel(rawValue: label) else {
+            return OrbCommand(action: .unknown)
+        }
+        
+        switch commandLabel {
+        case .moveLeft:
+            return OrbCommand(action: .move, value: OrbMoveTarget.left.rawValue)
+        case .moveRight:
+            return OrbCommand(action: .move, value: OrbMoveTarget.right.rawValue)
+        case .moveCenter:
+            return OrbCommand(action: .move, value: OrbMoveTarget.center.rawValue)
+        case .colorBlue:
+            return OrbCommand(action: .color, value: OrbColorTarget.blue.rawValue)
+        case .colorRed:
+            return OrbCommand(action: .color, value: OrbColorTarget.red.rawValue)
+        case .colorGreen:
+            return OrbCommand(action: .color, value: OrbColorTarget.green.rawValue)
+        case .bounce:
+            return OrbCommand(action: .bounce)
+        case .cancel:
+            return OrbCommand(action: .cancel)
         }
     }
-
 }

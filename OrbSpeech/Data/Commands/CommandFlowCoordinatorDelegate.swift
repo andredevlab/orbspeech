@@ -6,7 +6,7 @@ protocol CommandFlowCoordinatorDelegate: AnyObject {
     func commandFlowCoordinatorDidReset()
     func commandFlowCoordinatorDidStartActing()
     func commandFlowCoordinatorDidSettle(statusText: String?)
-    func commandFlowCoordinatorDidUpdateStatus(_ status: String)
+    func commandFlowCoordinatorDidUpdateStatus(_ status: CommandOutcomeStatus)
     func commandFlowCoordinatorDidUpdateVisualState(_ visualState: OrbVisualState)
     func commandFlowCoordinatorDidLog(_ message: String)
 }
