@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    
     private let background = Color(red: 1,
                                    green: 1,
                                    blue: 1)
@@ -70,6 +72,20 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .disabled(!viewModel.canInteract && !viewModel.isListening)
                 }
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                Task {
+                    await viewModel.resumeListeningAfterForegroundIfNeeded()
+                }
+            case .background:
+                viewModel.pauseListeningForBackground()
+            case .inactive:
+                break
+            @unknown default:
+                break
             }
         }
     }

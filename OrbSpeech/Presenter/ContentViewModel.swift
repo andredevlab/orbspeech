@@ -35,6 +35,7 @@ final class ContentViewModel {
     @ObservationIgnored private var lastLevelUpdate = Date.distantPast
     @ObservationIgnored private var lastOrbLevel = 0.0
     @ObservationIgnored private var isListeningLevelUpdatesSuspended = false
+    @ObservationIgnored private var shouldResumeListeningAfterForeground = false
     
     @ObservationIgnored private lazy var commandFlowCoordinator = {
         CommandFlowCoordinator(initialVisualState: orbVisualState,
@@ -99,12 +100,34 @@ final class ContentViewModel {
     
     func interact() async {
         guard canInteract || isListening else { return }
-        isListening ? stopListening() : await startListening()
+        if isListening {
+            shouldResumeListeningAfterForeground = false
+            stopListening()
+        } else {
+            await startListening()
+        }
+    }
+    
+    func pauseListeningForBackground() {
+        guard isListening else { return }
+        shouldResumeListeningAfterForeground = true
+        stopListening(statusText: "paused",
+                      logLine: "listening: paused for background")
+    }
+    
+    func resumeListeningAfterForegroundIfNeeded() async {
+        guard shouldResumeListeningAfterForeground else { return }
+        shouldResumeListeningAfterForeground = false
+        guard canInteract, !isListening else { return }
+        
+        appendLog("listening: resuming after foreground")
+        await startListening()
     }
     
     // MARK: - Private Methods
     
     private func startListening() async {
+        shouldResumeListeningAfterForeground = false
         voiceCommandCoordinator.reset()
         
         do {
@@ -143,10 +166,15 @@ final class ContentViewModel {
                 guard isAcceptingSpeechInput else { return }
                 await speechRecognizer.stream(buffer: AudioBufferBox(buffer))
             }
+        }, interruptionHandler: { [weak self] interruption in
+            Task { @MainActor [weak self] in
+                self?.handleMicrophoneInterruption(interruption)
+            }
         })
     }
     
-    private func stopListening() {
+    private func stopListening(statusText nextStatusText: String? = nil,
+                               logLine: String = "listening: stopped") {
         microphoneCapturing.stop()
         voiceCommandCoordinator.reset()
         Task { [speechRecognizer] in
@@ -154,8 +182,31 @@ final class ContentViewModel {
         }
         isListening = false
         orbState = .idle
-        statusText = orbState.description
-        appendLog("listening: stopped")
+        statusText = nextStatusText ?? orbState.description
+        appendLog(logLine)
+    }
+    
+    private func handleMicrophoneInterruption(_ interruption: MicrophoneInterruption) {
+        switch interruption {
+        case .began:
+            guard isListening else { return }
+            
+            voiceCommandCoordinator.reset()
+            Task { [speechRecognizer] in
+                _ = await speechRecognizer.finishStreaming()
+            }
+            
+            isListening = false
+            isListeningLevelUpdatesSuspended = false
+            orbState = .idle
+            statusText = "interrupted"
+            appendLog("listening: interrupted by audio session")
+        case .ended(let shouldResume):
+            appendLog("listening: audio session interruption ended, shouldResume=\(shouldResume)")
+            guard !isListening, statusText == "interrupted" else { return }
+            orbState = .idle
+            statusText = "ready"
+        }
     }
     
     private func appendLog(_ line: String) {

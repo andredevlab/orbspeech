@@ -6,6 +6,8 @@ final class MicrophoneService: MicrophoneCapturing, @unchecked Sendable {
     private let queue = DispatchQueue(label: "rumi.microphone.level")
     private var levelHandler: (@Sendable (Double) -> Void)?
     private var bufferHandler: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    private var interruptionHandler: (@Sendable (MicrophoneInterruption) -> Void)?
+    private var interruptionObserver: NSObjectProtocol?
     private var smoothedLevel: Double = 0
     
     func requestPermission() async -> Bool {
@@ -17,15 +19,18 @@ final class MicrophoneService: MicrophoneCapturing, @unchecked Sendable {
     }
     
     func start(levelHandler: @escaping @Sendable (Double) -> Void,
-               bufferHandler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) throws {
+               bufferHandler: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+               interruptionHandler: @escaping @Sendable (MicrophoneInterruption) -> Void) throws {
         self.levelHandler = levelHandler
         self.bufferHandler = bufferHandler
+        self.interruptionHandler = interruptionHandler
         smoothedLevel = 0
         
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker])
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
+        observeAudioSessionInterruptions()
         
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -39,12 +44,59 @@ final class MicrophoneService: MicrophoneCapturing, @unchecked Sendable {
     }
     
     func stop() {
+        stopCapture(deactivateSession: true)
+        clearInterruptionHandling()
+    }
+    
+    private func stopCapture(deactivateSession: Bool) {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         levelHandler = nil
         bufferHandler = nil
         smoothedLevel = 0
-        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        if deactivateSession {
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+    }
+    
+    private func observeAudioSessionInterruptions() {
+        removeAudioSessionInterruptionObserver()
+        interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification,
+                                                                      object: AVAudioSession.sharedInstance(),
+                                                                      queue: .main) { [weak self] notification in
+            self?.handleAudioSessionInterruption(notification)
+        }
+    }
+    
+    private func removeAudioSessionInterruptionObserver() {
+        guard let interruptionObserver else { return }
+        NotificationCenter.default.removeObserver(interruptionObserver)
+        self.interruptionObserver = nil
+    }
+    
+    private func clearInterruptionHandling() {
+        removeAudioSessionInterruptionObserver()
+        interruptionHandler = nil
+    }
+    
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            stopCapture(deactivateSession: false)
+            interruptionHandler?(.began)
+        case .ended:
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
+            interruptionHandler?(.ended(shouldResume: options.contains(.shouldResume)))
+            clearInterruptionHandling()
+        @unknown default:
+            return
+        }
     }
     
     private func handle(buffer: AVAudioPCMBuffer) {
