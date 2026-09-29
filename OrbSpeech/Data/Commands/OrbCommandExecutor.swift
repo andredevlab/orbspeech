@@ -1,59 +1,17 @@
 import Foundation
 
-private extension OrbMoveTarget {
-    var xOffset: Double {
-        switch self {
-        case .left:
-            return -110
-        case .center, .middle:
-            return 0
-        case .right:
-            return 110
-        }
-    }
-}
-
-private extension OrbColorTarget {
-    func applying(to visualState: OrbVisualState) -> OrbVisualState {
-        var target = visualState
-        switch self {
-        case .blue:
-            target.baseRed = 0.02
-            target.baseGreen = 0.07
-            target.baseBlue = 0.24
-            target.edgeRed = 0.20
-            target.edgeGreen = 0.45
-            target.edgeBlue = 1.0
-        case .red:
-            target.baseRed = 0.26
-            target.baseGreen = 0.03
-            target.baseBlue = 0.07
-            target.edgeRed = 1.0
-            target.edgeGreen = 0.20
-            target.edgeBlue = 0.28
-        case .green:
-            target.baseRed = 0.03
-            target.baseGreen = 0.20
-            target.baseBlue = 0.10
-            target.edgeRed = 0.22
-            target.edgeGreen = 0.92
-            target.edgeBlue = 0.50
-        }
-        return target
-    }
-}
-
 @MainActor
 final class OrbCommandExecutor {
     private var animationTask: Task<CommandOutcome, Never>?
     private var animationID: UUID?
     private var visualState: OrbVisualState
-    private let update: (OrbVisualState) -> Void
+    private var activeTransition: OrbVisualTransition?
+    private let update: (OrbVisualState, OrbVisualTransition?) -> Void
     
-    init(initialState: OrbVisualState, update: @escaping (OrbVisualState) -> Void) {
+    init(initialState: OrbVisualState, update: @escaping (OrbVisualState, OrbVisualTransition?) -> Void) {
         visualState = initialState
         self.update = update
-        update(initialState)
+        update(initialState, nil)
     }
     
     func execute(_ command: OrbCommand) async -> CommandOutcome {
@@ -78,6 +36,14 @@ final class OrbCommandExecutor {
         animationTask?.cancel()
         animationTask = nil
         animationID = nil
+        
+        // Cancellation policy: freeze in place. The shader owns the normal
+        // per-frame interpolation, but cancellation materializes the current
+        // interpolated value once so the residual visual state is defined.
+        if let activeTransition {
+            setVisualPresentation(state: activeTransition.visualState(at: Date.now.timeIntervalSinceReferenceDate),
+                                  transition: nil)
+        }
     }
     
     private func run(_ command: OrbCommand) async -> CommandOutcome {
@@ -94,6 +60,8 @@ final class OrbCommandExecutor {
                                   detail: "The orb cannot perform action \"\(command.action.rawValue)\".")
         }
     }
+    
+    // MARK: Commands
     
     private func move(_ command: OrbCommand) async -> CommandOutcome {
         guard let targetValue = command.value?.lowercased() else {
@@ -114,10 +82,10 @@ final class OrbCommandExecutor {
         target.yOffset = 0
         target.bounce = 0
         
-        let completed = await animate(from: start, to: target, duration: 0.9) { progress in
-            let settle = sin(progress * .pi) * 0.08
-            return visualStateByMixing(start, target, progress).withBounce(settle)
-        }
+        let completed = await animate(from: start,
+                                      to: target,
+                                      duration: 0.9,
+                                      transientBounceAmplitude: 0.08)
         
         return completed
         ? CommandOutcome(id: command.id, status: .completed, detail: "Moved \(moveTarget.spokenValue).")
@@ -171,64 +139,90 @@ final class OrbCommandExecutor {
                          detail: "Bounce was interrupted.")
     }
     
+    // MARK: Animation core
+    
+    /// Emits one transition and waits for its duration. `RumiOrbView`'s
+    /// `TimelineView` is the only frame clock; Metal interpolates the
+    /// transition per frame from the emitted uniforms.
     private func animate(from start: OrbVisualState,
                          to target: OrbVisualState,
                          duration: TimeInterval,
-                         frame: ((Double) -> OrbVisualState)? = nil) async -> Bool {
-        let frameCount = max(Int(duration * 60), 1)
+                         transientBounceAmplitude: Double = 0) async -> Bool {
+        let transition = OrbVisualTransition(startState: start,
+                                             targetState: target,
+                                             startTime: Date.now.timeIntervalSinceReferenceDate,
+                                             duration: duration,
+                                             transientBounceAmplitude: transientBounceAmplitude)
+        setVisualPresentation(state: start, transition: transition)
         
-        for index in 0...frameCount {
-            if Task.isCancelled {
-                return false
-            }
-            
-            let linearProgress = Double(index) / Double(frameCount)
-            let progress = easeInOut(linearProgress)
-            let next = frame?(progress) ?? visualStateByMixing(start, target, progress)
-            setVisualState(next)
-            
-            if index < frameCount {
-                try? await Task.sleep(for: .seconds(duration / Double(frameCount)))
-            }
+        do {
+            let nanoseconds = UInt64(max(duration, 0) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanoseconds)
+        } catch {
+            setVisualPresentation(state: transition.visualState(at: Date.now.timeIntervalSinceReferenceDate),
+                                  transition: nil)
+            return false
         }
         
-        setVisualState(target)
+        guard !Task.isCancelled else {
+            setVisualPresentation(state: transition.visualState(at: Date.now.timeIntervalSinceReferenceDate),
+                                  transition: nil)
+            return false
+        }
+        
+        setVisualPresentation(state: target, transition: nil)
         return true
     }
     
-    private func setVisualState(_ state: OrbVisualState) {
+    private func setVisualPresentation(state: OrbVisualState,
+                                       transition: OrbVisualTransition?) {
         visualState = state
-        update(state)
-    }
-    
-    private func easeInOut(_ value: Double) -> Double {
-        let t = min(max(value, 0), 1)
-        return t * t * (3 - 2 * t)
+        activeTransition = transition
+        update(state, transition)
     }
 }
 
-private func visualStateByMixing(_ start: OrbVisualState,
-                                 _ target: OrbVisualState,
-                                 _ progress: Double) -> OrbVisualState {
-    OrbVisualState(xOffset: mix(start.xOffset, target.xOffset, progress),
-                   yOffset: mix(start.yOffset, target.yOffset, progress),
-                   baseRed: mix(start.baseRed, target.baseRed, progress),
-                   baseGreen: mix(start.baseGreen, target.baseGreen, progress),
-                   baseBlue: mix(start.baseBlue, target.baseBlue, progress),
-                   edgeRed: mix(start.edgeRed, target.edgeRed, progress),
-                   edgeGreen: mix(start.edgeGreen, target.edgeGreen, progress),
-                   edgeBlue: mix(start.edgeBlue, target.edgeBlue, progress),
-                   bounce: mix(start.bounce, target.bounce, progress))
+// MARK: - Target mappings
+
+private extension OrbMoveTarget {
+    var xOffset: Double {
+        switch self {
+        case .left:
+            return -110
+        case .center, .middle:
+            return 0
+        case .right:
+            return 110
+        }
+    }
 }
 
-private func mix(_ start: Double, _ target: Double, _ progress: Double) -> Double {
-    start + (target - start) * progress
-}
-
-private extension OrbVisualState {
-    func withBounce(_ value: Double) -> OrbVisualState {
-        var copy = self
-        copy.bounce = value
-        return copy
+private extension OrbColorTarget {
+    func applying(to visualState: OrbVisualState) -> OrbVisualState {
+        var target = visualState
+        switch self {
+        case .blue:
+            target.baseRed = 0.02
+            target.baseGreen = 0.07
+            target.baseBlue = 0.24
+            target.edgeRed = 0.20
+            target.edgeGreen = 0.45
+            target.edgeBlue = 1.0
+        case .red:
+            target.baseRed = 0.26
+            target.baseGreen = 0.03
+            target.baseBlue = 0.07
+            target.edgeRed = 1.0
+            target.edgeGreen = 0.20
+            target.edgeBlue = 0.28
+        case .green:
+            target.baseRed = 0.03
+            target.baseGreen = 0.20
+            target.baseBlue = 0.10
+            target.edgeRed = 0.22
+            target.edgeGreen = 0.92
+            target.edgeBlue = 0.50
+        }
+        return target
     }
 }

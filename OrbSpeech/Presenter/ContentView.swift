@@ -19,7 +19,8 @@ struct ContentView: View {
             
             RumiOrbView(background: background,
                         state: viewModel.orbState,
-                        visualState: viewModel.orbVisualState)
+                        visualState: viewModel.orbVisualState,
+                        visualTransition: viewModel.orbVisualTransition)
             .ignoresSafeArea()
             
             VStack(spacing: 44) {

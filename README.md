@@ -27,14 +27,14 @@ This project focuses on proving the core on-device loop first:
 | Ask | Current project status |
 | --- | --- |
 | Real microphone drives the orb | Implemented. `MicrophoneCapturing` uses `AVAudioEngine` and publishes both audio level and buffers. The level drives `.listening(level)` so the Metal orb reacts to the real signal. |
-| Metal shaders, not SwiftUI-only animation | Implemented. `RumiOrbView` renders the orb through `RumiOrbMetal.metal`; SwiftUI owns layout and state, while the orb effect is shader-driven. |
+| Metal shaders, not SwiftUI-only animation | Implemented. `RumiOrbView` renders the orb through `RumiOrbMetal.metal`. SwiftUI still hosts the view and submits shader uniforms through `TimelineView`; the per-pixel orb rendering and command-transition interpolation happen in the shader. |
 | On-device voice | Implemented. `SpeechSynthesizing` wraps `AVSpeechSynthesizer`; the orb speaks short local responses without a network call. |
 | Spoken commands using a model | Implemented as a narrow validation slice. Speech becomes text, text goes through `CommandResolver`, and the result becomes an `OrbCommand`. The resolver pipeline supports FoundationModels when available and a bundled Core ML classifier fallback. |
-| Command execution should feel like orb motion, not a snap | Implemented for the mapped actions. `OrbCommandExecutor` animates `OrbVisualState` changes for movement, color, and bounce. |
+| Command execution should feel like orb motion, not a snap | Implemented for the mapped actions. `OrbCommandExecutor` emits a start/target/time/duration transition for movement, color, and bounce; `RumiOrbMetal.metal` interpolates that transition. |
 | Unknown commands should be handled honestly | Implemented. Unknown or unsupported commands go through `CommandFlowCoordinator`, which asks the orb to say that it cannot do that yet instead of pretending success. |
 | User interruption should stop cleanly | Implemented for local capture and command flow. `MicrophoneService` observes `AVAudioSession.interruptionNotification`, stops capture on interruption start, and reports interruption end without auto-resuming after system interruptions. If the user backgrounds the app while listening, OrbSpeech pauses capture and resumes listening automatically when the app returns to foreground. |
 | Networked seam | Partially implemented. A `NetworkingResolver` stub exists in the resolver chain and models the boundary where production command understanding could move off-device. The message protocol and failure behavior are described below. |
-| Cost to run for long sessions | Not fully measured in-app. The shader was designed to keep animation on the GPU, but sustained heat/memory/battery measurement was left out to keep the implementation focused on the working loop. The measurement plan is documented below. |
+| Cost to run for long sessions | Not fully measured in-app. The current graphics path keeps per-pixel rendering and command-transition interpolation in Metal, while SwiftUI still submits time and uniforms once per `TimelineView` frame. Sustained heat/memory/battery measurement was left out to keep the implementation focused on the working loop. The measurement plan is documented below. |
 | How I worked with AI | Documented below. AI helped accelerate implementation and alternatives research, but runtime behavior, audio-session choices, model availability, and shader behavior still needed manual checking. |
 
 ## Architecture
@@ -65,6 +65,7 @@ It exposes state for the view to render:
 - Whether the app is listening
 - The current `OrbState`
 - The current `OrbVisualState`
+- The active `OrbVisualTransition`, when a command animation is in flight
 
 It also exposes the user-facing actions:
 
@@ -147,7 +148,7 @@ Only a small set of commands is mapped right now. That was intentional: the prio
 
 ## Orb Command Execution
 
-`OrbCommandExecutor` receives an `OrbCommand` and translates it into a new `OrbVisualState`.
+`OrbCommandExecutor` receives an `OrbCommand` and translates it into an `OrbVisualTransition`.
 
 `OrbVisualState` contains the orb’s visual properties, such as:
 
@@ -155,9 +156,11 @@ Only a small set of commands is mapped right now. That was intentional: the prio
 - Color
 - Bounce or other mapped effects
 
-The executor is the component that knows how the orb should move. For example, a move command should not teleport the orb. It should animate the orb in the same style as the rest of the product: travel, arrive, and settle.
+`OrbVisualTransition` contains the start state, target state, start time, duration, and any transient bounce used for the command. The executor is the component that knows the semantic target of a command, but it no longer calculates every animation frame itself.
 
-The Metal layer does not decide when an action is complete. Metal renders frames. The command executor owns the async animation and returns a `CommandOutcome` when the action finishes or is interrupted.
+The animation model avoids a separate command-side frame loop. Earlier versions used a `Task.sleep` loop on the `MainActor`, wrote observable visual state about 60 times per second, and ran that on top of a separate 60 Hz `TimelineView`, which meant command interpolation was CPU/MainActor work and was not display-synchronized.
+
+The current implementation uses `TimelineView` as the single frame-time source for the orb. SwiftUI still evaluates the `TimelineView` closure each frame and submits uniforms to the shader. Metal renders the orb per pixel and interpolates command transitions from start/target/time/duration uniforms. The command executor emits the transition once, waits for completion or cancellation, and returns a `CommandOutcome` when the action finishes or is interrupted.
 
 The executor currently implements only the few actions needed for rapid validation, such as movement, color, and bounce. More commands can be added by extending the resolver’s output space and mapping new actions into `OrbVisualState` transitions here.
 
@@ -238,7 +241,9 @@ I did not complete a proper sustained-session measurement pass. For a production
 - Battery: Xcode energy report and Instruments Energy Log over a sustained listening and animation loop.
 - Frame rate: Core Animation FPS and GPU counters while the orb is idle, listening, thinking, speaking, and acting.
 
-The shader work is designed so the orb remains GPU-driven. SwiftUI changes high-level state; Metal does the per-frame visual work. The main wins for holding 120fps for long sessions would come from keeping shader math bounded, reducing overdraw, limiting expensive noise layers, throttling state updates from the microphone, and avoiding unnecessary SwiftUI invalidations while audio is streaming.
+The orb is rendered with Metal shaders, and command transitions are interpolated in the shader from start/target/time/duration uniforms. This is not a claim that the whole animation system is fully GPU-driven: SwiftUI's `TimelineView` still provides frame time from the main app layer and submits uniforms each frame. Command movement, color, and bounce are represented as transition uniforms rather than being calculated through per-frame observable state updates.
+
+The main wins for holding 120fps for long sessions would come from keeping shader math bounded, reducing overdraw, limiting expensive noise layers, throttling state updates from the microphone, and avoiding unnecessary SwiftUI invalidations while audio is streaming.
 
 The expensive parts of the app are not only the shader. The microphone is always active while listening, the speech recognizer may run CoreML inference, and the command resolver may use FoundationModels or CoreML. A two-hour session would need budget across all three: audio, ML, and graphics.
 

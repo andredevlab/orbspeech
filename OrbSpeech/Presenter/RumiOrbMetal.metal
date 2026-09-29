@@ -37,6 +37,17 @@ static inline float rumi_ease(float value) {
     return t * t * (3.0 - 2.0 * t);
 }
 
+static inline float rumi_transition_progress(float elapsed, float duration) {
+    if (duration <= 0.0) {
+        return 1.0;
+    }
+    return rumi_ease(elapsed / duration);
+}
+
+static inline half4 rumi_mix_color(half4 start, half4 target, float progress) {
+    return half4(mix(float4(start), float4(target), progress));
+}
+
 static inline half4 rumi_orb(
     float2 position,
     half4 currentColor,
@@ -92,9 +103,21 @@ static inline half4 rumi_orb(
     half4 baseColor,
     half4 edgeColor,
     float2 centerOffset,
-    float bounce
+    float bounce,
+    half4 targetBaseColor,
+    half4 targetEdgeColor,
+    float2 targetCenterOffset,
+    float targetBounce,
+    float transitionElapsed,
+    float transitionDuration,
+    float transientBounceAmplitude
 ) {
-    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, centerOffset, bounce, -1.0);
+    float progress = rumi_transition_progress(transitionElapsed, transitionDuration);
+    half4 resolvedBaseColor = rumi_mix_color(baseColor, targetBaseColor, progress);
+    half4 resolvedEdgeColor = rumi_mix_color(edgeColor, targetEdgeColor, progress);
+    float2 resolvedCenterOffset = mix(centerOffset, targetCenterOffset, progress);
+    float resolvedBounce = mix(bounce, targetBounce, progress) + sin(progress * M_PI_F) * transientBounceAmplitude;
+    return rumi_orb(position, currentColor, size, time, pixelScale, resolvedBaseColor, resolvedEdgeColor, resolvedCenterOffset, resolvedBounce, -1.0);
 }
 
 [[ stitchable ]] half4 rumi_listening(
@@ -107,9 +130,21 @@ static inline half4 rumi_orb(
     half4 edgeColor,
     float2 centerOffset,
     float bounce,
+    half4 targetBaseColor,
+    half4 targetEdgeColor,
+    float2 targetCenterOffset,
+    float targetBounce,
+    float transitionElapsed,
+    float transitionDuration,
+    float transientBounceAmplitude,
     float listeningFrequency
 ) {
-    return rumi_orb(position, currentColor, size, time, pixelScale, baseColor, edgeColor, centerOffset, bounce, listeningFrequency);
+    float progress = rumi_transition_progress(transitionElapsed, transitionDuration);
+    half4 resolvedBaseColor = rumi_mix_color(baseColor, targetBaseColor, progress);
+    half4 resolvedEdgeColor = rumi_mix_color(edgeColor, targetEdgeColor, progress);
+    float2 resolvedCenterOffset = mix(centerOffset, targetCenterOffset, progress);
+    float resolvedBounce = mix(bounce, targetBounce, progress) + sin(progress * M_PI_F) * transientBounceAmplitude;
+    return rumi_orb(position, currentColor, size, time, pixelScale, resolvedBaseColor, resolvedEdgeColor, resolvedCenterOffset, resolvedBounce, listeningFrequency);
 }
 
 [[ stitchable ]] half4 rumi_thinking(
@@ -121,8 +156,21 @@ static inline half4 rumi_orb(
     half4 baseColor,
     half4 edgeColor,
     float2 centerOffset,
-    float bounce
+    float bounce,
+    half4 targetBaseColor,
+    half4 targetEdgeColor,
+    float2 targetCenterOffset,
+    float targetBounce,
+    float transitionElapsed,
+    float transitionDuration,
+    float transientBounceAmplitude
 ) {
+    float commandProgress = rumi_transition_progress(transitionElapsed, transitionDuration);
+    baseColor = rumi_mix_color(baseColor, targetBaseColor, commandProgress);
+    edgeColor = rumi_mix_color(edgeColor, targetEdgeColor, commandProgress);
+    centerOffset = mix(centerOffset, targetCenterOffset, commandProgress);
+    bounce = mix(bounce, targetBounce, commandProgress) + sin(commandProgress * M_PI_F) * transientBounceAmplitude;
+    
     float side = 190.0;
     float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
     float2 startCenter = size * 0.5 + centerOffset;
@@ -173,8 +221,21 @@ static inline half4 rumi_orb(
     half4 baseColor,
     half4 edgeColor,
     float2 centerOffset,
-    float bounce
+    float bounce,
+    half4 targetBaseColor,
+    half4 targetEdgeColor,
+    float2 targetCenterOffset,
+    float targetBounce,
+    float transitionElapsed,
+    float transitionDuration,
+    float transientBounceAmplitude
 ) {
+    float commandProgress = rumi_transition_progress(transitionElapsed, transitionDuration);
+    baseColor = rumi_mix_color(baseColor, targetBaseColor, commandProgress);
+    edgeColor = rumi_mix_color(edgeColor, targetEdgeColor, commandProgress);
+    centerOffset = mix(centerOffset, targetCenterOffset, commandProgress);
+    bounce = mix(bounce, targetBounce, commandProgress) + sin(commandProgress * M_PI_F) * transientBounceAmplitude;
+    
     float side = 190.0;
     float bounceScale = 1.0 + clamp(bounce, 0.0, 1.0) * 0.16;
     float2 startCenter = size * 0.5 + centerOffset;

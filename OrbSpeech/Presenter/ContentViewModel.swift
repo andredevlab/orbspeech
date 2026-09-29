@@ -10,6 +10,7 @@ final class ContentViewModel {
     
     private(set) var orbState = OrbState.idle
     private(set) var orbVisualState = OrbVisualState.default
+    private(set) var orbVisualTransition: OrbVisualTransition?
     private(set) var isListening = false
     private(set) var statusText = ViewStatus.idle.text
     
@@ -309,8 +310,10 @@ extension ContentViewModel: CommandFlowCoordinatorDelegate {
         setStatus(.commandOutcome(status))
     }
     
-    func commandFlowCoordinatorDidUpdateVisualState(_ visualState: OrbVisualState) {
-        orbVisualState = visualState
+    func commandFlowCoordinatorDidUpdateVisualPresentation(state: OrbVisualState,
+                                                           transition: OrbVisualTransition?) {
+        orbVisualState = state
+        orbVisualTransition = transition
     }
     
     func commandFlowCoordinatorDidLog(_ message: String) {

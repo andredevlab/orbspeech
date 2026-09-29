@@ -24,8 +24,9 @@ final class CommandFlowCoordinator {
         self.delegate = delegate
         
         self.commandExecutor = OrbCommandExecutor(initialState: initialVisualState,
-                                                  update: { [weak delegate] visualState in
-            delegate?.commandFlowCoordinatorDidUpdateVisualState(visualState)
+                                                  update: { [weak delegate] state, transition in
+            delegate?.commandFlowCoordinatorDidUpdateVisualPresentation(state: state,
+                                                                        transition: transition)
         })
     }
     
