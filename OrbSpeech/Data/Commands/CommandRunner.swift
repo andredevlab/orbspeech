@@ -14,7 +14,6 @@ final class CommandRunner {
     private var runnerID: UUID?
     private var runnerTask: Task<Void, Never>?
     private var cancellationSpeechTask: Task<Void, Never>?
-    private var listeningPromptTask: Task<Void, Never>?
     
     private weak var delegate: (any CommandRunnerDelegate)?
     
@@ -43,20 +42,6 @@ final class CommandRunner {
         }
     }
     
-    func speakListeningPrompt() {
-        listeningPromptTask?.cancel()
-        listeningPromptTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            
-            delegate?.commandRunnerDidStartProcessing()
-            await speaker.speak(.listening)
-            guard !Task.isCancelled else { return }
-            
-            settleToListeningOrIdle()
-            listeningPromptTask = nil
-        }
-    }
-    
     func reset() {
         pendingItems = []
         runnerID = nil
@@ -64,8 +49,6 @@ final class CommandRunner {
         runnerTask = nil
         cancellationSpeechTask?.cancel()
         cancellationSpeechTask = nil
-        listeningPromptTask?.cancel()
-        listeningPromptTask = nil
         speaker.stopSpeaking()
         commandExecutor.cancel()
         delegate?.commandRunnerDidReset()
@@ -140,7 +123,6 @@ final class CommandRunner {
         runnerTask?.cancel()
         runnerTask = nil
         cancellationSpeechTask?.cancel()
-        listeningPromptTask?.cancel()
         speaker.stopSpeaking()
         commandExecutor.cancel()
         delegate?.commandRunnerDidReset()

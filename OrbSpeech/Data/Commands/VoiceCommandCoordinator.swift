@@ -32,10 +32,6 @@ final class VoiceCommandCoordinator {
         }
     }
     
-    func speakListeningPrompt() {
-        commandRunner.speakListeningPrompt()
-    }
-    
     func reset() {
         pendingTranscriptTask?.cancel()
         pendingTranscriptTask = nil

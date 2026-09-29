@@ -20,7 +20,6 @@ final class ContentViewModel {
     private(set) var statusText = "idle"
     
     private(set) var onDeviceComponentsState: State = .idle
-    private(set) var microphoneCapturingState: State = .idle
     
     var canInteract: Bool {
         onDeviceComponentsState == .success
@@ -33,15 +32,28 @@ final class ContentViewModel {
     @ObservationIgnored private let speechSynthesizer: any SpeechSynthesizing
     @ObservationIgnored private let commandResolver: any CommandResolver
     
-    @ObservationIgnored private var commandTask: Task<Void, Never>?
-    @ObservationIgnored private var pendingTranscriptTask: Task<Void, Never>?
-    @ObservationIgnored private var pendingTranscriptText = ""
-    @ObservationIgnored private var lastResolvedTranscript = ""
     @ObservationIgnored private var lastLevelUpdate = Date.distantPast
     @ObservationIgnored private var lastOrbLevel = 0.0
-    @ObservationIgnored private var isProcessingCommand = false
-    @ObservationIgnored private lazy var commandExecutor = OrbCommandExecutor(initialState: orbVisualState) { [weak self] visualState in
-        self?.orbVisualState = visualState
+    @ObservationIgnored private var isListeningLevelUpdatesSuspended = false
+    
+    @ObservationIgnored private lazy var commandRunner = {
+        CommandRunner(initialVisualState: orbVisualState,
+                      speaker: self,
+                      delegate: self)
+    }()
+    
+    @ObservationIgnored private lazy var voiceCommandCoordinator = {
+        VoiceCommandCoordinator(commandResolver: commandResolver,
+                                commandRunner: commandRunner,
+                                delegate: self)
+    }()
+    
+    private var isAcceptingSpeechInput: Bool {
+        isListening && orbState != .speaking
+    }
+    
+    private var canPublishListeningLevel: Bool {
+        isListening && !isListeningLevelUpdatesSuspended
     }
     
     // MARK: - Initialization
@@ -93,33 +105,13 @@ final class ContentViewModel {
     // MARK: - Private Methods
     
     private func startListening() async {
+        voiceCommandCoordinator.reset()
+        
         do {
-            try await speechRecognizer.startStreaming { [weak self] result in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    guard orbState != .speaking else { return }
-                    self.handle(transcription: result)
-                }
-            }
-            
-            try microphoneCapturing.start { [weak self] level in
-                guard let self else { return }
-                Task { @MainActor in
-                    guard let orbLevel = self.orbLevelToPublish(from: level) else { return }
-                    self.isListening = true
-                    if !self.isProcessingCommand {
-                        self.orbState = .listening(orbLevel)
-                    }
-                    self.statusText = self.orbState.description
-                }
-            } bufferHandler: { [weak self] buffer in
-                Task {
-                    await self?.speechRecognizer.stream(buffer: AudioBufferBox(buffer))
-                }
-            }
-            
+            try await bindComponents()
             isListening = true
             appendLog("listening: started")
+            await speakListeningConfirmation()
         } catch {
             isListening = false
             statusText = error.localizedDescription
@@ -128,16 +120,35 @@ final class ContentViewModel {
         }
     }
     
+    private func bindComponents() async throws {
+        try await speechRecognizer.startStreaming { [weak self] result in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard isAcceptingSpeechInput else { return }
+                voiceCommandCoordinator.handle(transcription: result)
+            }
+        }
+        
+        try microphoneCapturing.start(levelHandler: { [weak self] level in
+            guard let self else { return }
+            Task { @MainActor in
+                guard let orbLevel = self.orbLevelToPublish(from: level) else { return }
+                guard self.canPublishListeningLevel else { return }
+                self.orbState = .listening(orbLevel)
+                self.statusText = self.orbState.description
+            }
+        }, bufferHandler: { [weak self] buffer in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard isAcceptingSpeechInput else { return }
+                await speechRecognizer.stream(buffer: AudioBufferBox(buffer))
+            }
+        })
+    }
+    
     private func stopListening() {
         microphoneCapturing.stop()
-        pendingTranscriptTask?.cancel()
-        pendingTranscriptTask = nil
-        pendingTranscriptText = ""
-        commandTask?.cancel()
-        commandTask = nil
-        commandExecutor.cancel()
-        speechSynthesizer.stop()
-        isProcessingCommand = false
+        voiceCommandCoordinator.reset()
         Task { [speechRecognizer] in
             _ = await speechRecognizer.finishStreaming()
         }
@@ -147,130 +158,8 @@ final class ContentViewModel {
         appendLog("listening: stopped")
     }
     
-    private func handle(transcription: TranscriptionResult) {
-        if !transcription.stableText.isEmpty {
-            appendLog("transcript final: \"\(transcription.stableText)\"")
-            scheduleResolveAfterSilenceIfNeeded(transcription.stableText)
-        } else {
-            scheduleResolveAfterSilenceIfNeeded(transcription.volatileText)
-        }
-    }
-    
-    private func resolveAndExecute(_ transcript: String) {
-        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTranscript.isEmpty else { return }
-        guard trimmedTranscript != lastResolvedTranscript else { return }
-        
-        lastResolvedTranscript = trimmedTranscript
-        commandTask?.cancel()
-        speechSynthesizer.stop()
-        commandExecutor.cancel()
-        isProcessingCommand = true
-        orbState = .thinking
-        statusText = orbState.description
-        appendLog("resolver: resolving \"\(trimmedTranscript)\"")
-        commandTask = Task { [commandResolver] in
-            do {
-                let command = try await commandResolver.resolve(trimmedTranscript)
-                guard !Task.isCancelled else { return }
-                
-                await MainActor.run {
-                    appendLog("resolver command: \(command)")
-                    orbState = .settling
-                    statusText = orbState.description
-                }
-                
-                if command.action == "cancel" {
-                    await MainActor.run {
-                        cancelCurrentCommandFlow(message: "cancelled")
-                    }
-                    return
-                }
-                
-                try? await Task.sleep(for: .milliseconds(1500))
-                guard !Task.isCancelled else { return }
-                
-                if command.action == "unknown" {
-                    await MainActor.run {
-                        isProcessingCommand = false
-                        orbState = isListening ? .listening(0) : .idle
-                        statusText = "unknown"
-                    }
-                    return
-                }
-                
-                await MainActor.run {
-                    orbState = .speaking
-                    isProcessingCommand = true
-                    statusText = orbState.description
-                }
-                
-                await speechSynthesizer.speak("Ok, I'll do what you asked.")
-                guard !Task.isCancelled else { return }
-                
-                await MainActor.run {
-                    orbState = .acting
-                    isProcessingCommand = true
-                    statusText = orbState.description
-                }
-                
-                let outcome = await commandExecutor.execute(command)
-                guard !Task.isCancelled else { return }
-                
-                await MainActor.run {
-                    isProcessingCommand = false
-                    orbState = isListening ? .listening(0) : .idle
-                    appendLog("executor outcome: \(outcome)")
-                    statusText = outcome.status
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    isProcessingCommand = false
-                    orbState = isListening ? .listening(0) : .idle
-                    appendLog("resolver error: \(error.localizedDescription)")
-                    statusText = "command failed"
-                }
-            }
-        }
-    }
-    
     private func appendLog(_ line: String) {
         print("[OrbSpeech] \(line)")
-    }
-    
-    private func cancelCurrentCommandFlow(message: String) {
-        speechSynthesizer.stop()
-        commandExecutor.cancel()
-        isProcessingCommand = false
-        orbState = isListening ? .listening(0) : .idle
-        
-        appendLog("command flow: \(message)")
-        statusText = message
-    }
-    
-    private func scheduleResolveAfterSilenceIfNeeded(_ transcript: String) {
-        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTranscript.isEmpty else { return }
-        
-        pendingTranscriptTask?.cancel()
-        if pendingTranscriptText != trimmedTranscript {
-            appendLog("resolver: waiting for 1s silence")
-        }
-        pendingTranscriptText = trimmedTranscript
-        pendingTranscriptTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(1))
-            } catch {
-                return
-            }
-            
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self?.pendingTranscriptText = ""
-                self?.resolveAndExecute(trimmedTranscript)
-            }
-        }
     }
     
     private func orbLevelToPublish(from level: Double) -> Double? {
@@ -285,5 +174,87 @@ final class ContentViewModel {
         lastLevelUpdate = now
         lastOrbLevel = normalizedLevel
         return normalizedLevel
+    }
+    
+    private func speakListeningConfirmation() async {
+        isListeningLevelUpdatesSuspended = true
+        await speakText(SpeakCommand.listening.text)
+        
+        guard isListening else {
+            isListeningLevelUpdatesSuspended = false
+            return
+        }
+        
+        isListeningLevelUpdatesSuspended = false
+        orbState = .listening(0)
+        statusText = orbState.description
+    }
+    
+    private func speakText(_ text: String) async {
+        orbState = .speaking
+        statusText = OrbState.speaking.description
+        await speechSynthesizer.speak(text)
+    }
+}
+
+// MARK: - SpeakCommandHandling
+
+extension ContentViewModel: SpeakCommandHandling {
+    func speak(_ command: SpeakCommand) async {
+        await speakText(command.text)
+    }
+    
+    func stopSpeaking() {
+        speechSynthesizer.stop()
+    }
+}
+
+// MARK: - VoiceCommandCoordinatorDelegate
+
+extension ContentViewModel: VoiceCommandCoordinatorDelegate {
+    func voiceCommandCoordinatorDidStartResolving() {
+        isListeningLevelUpdatesSuspended = true
+        orbState = .thinking
+        statusText = OrbState.thinking.description
+    }
+    
+    func voiceCommandCoordinatorDidLog(_ message: String) {
+        appendLog(message)
+    }
+}
+
+// MARK: - CommandRunnerDelegate
+
+extension ContentViewModel: CommandRunnerDelegate {
+    func commandRunnerDidStartProcessing() {
+        isListeningLevelUpdatesSuspended = true
+    }
+    
+    func commandRunnerDidReset() {
+        isListeningLevelUpdatesSuspended = false
+    }
+    
+    func commandRunnerDidStartActing() {
+        orbState = .acting
+        statusText = OrbState.acting.description
+    }
+    
+    func commandRunnerDidSettle(statusText text: String?) {
+        isListeningLevelUpdatesSuspended = false
+        let state: OrbState = isListening ? .listening(0) : .idle
+        orbState = state
+        statusText = text ?? state.description
+    }
+    
+    func commandRunnerDidUpdateStatus(_ status: String) {
+        statusText = status
+    }
+    
+    func commandRunnerDidUpdateVisualState(_ visualState: OrbVisualState) {
+        orbVisualState = visualState
+    }
+    
+    func commandRunnerDidLog(_ message: String) {
+        appendLog(message)
     }
 }
