@@ -6,21 +6,21 @@ import Factory
 struct OrbSpeechApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView(viewModel: OrbSpeechApp.makeViewModel())
+            OrbSpeechRootView(session: OrbSpeechSession.shared)
         }
     }
-
+    
     static func makeViewModel() -> ContentViewModel {
 #if DEBUG
         let environment = ProcessInfo.processInfo.environment
         let audioURL = environment["ORB_UI_TEST_AUDIO_RESOURCE"].flatMap { resourceName in
             Bundle.main.url(forResource: resourceName, withExtension: "wav")
-                ?? Bundle.main.url(forResource: resourceName, withExtension: "wav", subdirectory: "Resources/Audio")
+            ?? Bundle.main.url(forResource: resourceName, withExtension: "wav", subdirectory: "Resources/Audio")
         } ?? environment["ORB_UI_TEST_AUDIO_PATH"].map(URL.init(fileURLWithPath:))
-
+        
         if let audioURL {
             let transcript = environment["ORB_UI_TEST_TRANSCRIPT"] ?? "move left"
-
+            
             Container.shared.microphoneCapturing.register {
                 UITestAudioFixtureMicrophoneService(audioURL: audioURL)
             }
@@ -37,7 +37,16 @@ struct OrbSpeechApp: App {
             }
         }
 #endif
-
+        
         return ContentViewModel()
+    }
+}
+
+private struct OrbSpeechRootView: View {
+    let session: OrbSpeechSession
+    
+    var body: some View {
+        ContentView(viewModel: session.viewModel)
+            .id(ObjectIdentifier(session.viewModel))
     }
 }

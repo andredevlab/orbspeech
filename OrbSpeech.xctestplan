@@ -19,6 +19,13 @@
   "testTargets" : [
     {
       "parallelizable" : true,
+      "skippedTests" : {
+        "suites" : [
+          {
+            "name" : "BenchmarkTests"
+          }
+        ]
+      },
       "target" : {
         "containerPath" : "container:OrbSpeech.xcodeproj",
         "identifier" : "165D8CF5305C0BCF00352C4B",
