@@ -1,12 +1,10 @@
 # OrbSpeech
 
-OrbSpeech is a small iOS prototype where a Metal-rendered orb listens to the user, turns speech into text, resolves that text into an actionable command, responds out loud through speech synthesis, and animates the orb in response.
+OrbSpeech is a one-screen iOS prototype where a Metal-rendered orb listens to speech, resolves short spoken commands, speaks back through iOS speech synthesis, and animates in response.
 
-The goal of this implementation is to validate the end-to-end product interaction from the take-home challenge: microphone input, speech recognition, speech-to-command resolution, spoken feedback through `SpeechSynthesizing`, and orb animation. The scope was intentionally kept narrow so the full loop could be built and tested within the available time.
+The project focuses on a narrow end-to-end loop: microphone input, speech recognition, speech-to-command resolution, spoken feedback, interruption handling, cancellation, and shader-driven orb motion.
 
-## Build Requirements
-
-OrbSpeech is configured to build from a clean checkout with the following environment:
+## Requirements
 
 | Requirement | Version / Notes |
 | --- | --- |
@@ -14,299 +12,249 @@ OrbSpeech is configured to build from a clean checkout with the following enviro
 | iOS SDK | 26.2 or later |
 | Deployment target | iOS 26.0 |
 | Scheme | `OrbSpeech` |
-| Package dependencies | Resolved by Swift Package Manager on first build |
+| Dependencies | Swift Package Manager resolves `Factory` and `FluidAudio` |
 
-The app and test targets intentionally keep `IPHONEOS_DEPLOYMENT_TARGET` at `26.0` so the project can resolve destinations on the iOS 26.2 SDK while still building on newer Xcode releases.
+The app and test targets keep `IPHONEOS_DEPLOYMENT_TARGET` at `26.0` so Xcode can resolve iOS 26.2 simulator/device destinations while still building on newer SDKs.
 
-## Challenge Mapping
+## Running
 
-The updated brief and email ask for a small one-screen product that spans graphics, audio, on-device AI, speech, a production networking boundary, cost analysis, and a short explanation of how the work was done.
+Open `OrbSpeech.xcodeproj`, select the `OrbSpeech` scheme, and run on a physical iOS device for the real microphone experience.
 
-This project focuses on proving the core on-device loop first:
+The simulator is useful for building and running the automated tests, but it is not the target environment for manually speaking to the orb. Real microphone capture and the full speech loop should be validated on device.
 
-| Ask | Current project status |
-| --- | --- |
-| Real microphone drives the orb | Implemented. `MicrophoneCapturing` uses `AVAudioEngine` and publishes both audio level and buffers. The level drives `.listening(level)` so the Metal orb reacts to the real signal. |
-| Metal shaders, not SwiftUI-only animation | Implemented. `RumiOrbView` renders the orb through `RumiOrbMetal.metal`. SwiftUI still hosts the view and submits shader uniforms through `TimelineView`; the per-pixel orb rendering and command-transition interpolation happen in the shader. |
-| On-device voice | Implemented. `SpeechSynthesizing` wraps `AVSpeechSynthesizer`; the orb speaks short local responses without a network call. |
-| Spoken commands using a model | Implemented as a narrow validation slice. Speech becomes text, text goes through `CommandResolver`, and the result becomes an `OrbCommand`. The resolver pipeline supports FoundationModels when available and a bundled Core ML classifier fallback. |
-| Command execution should feel like orb motion, not a snap | Implemented for the mapped actions. `OrbCommandExecutor` emits a start/target/time/duration transition for movement, color, and bounce; `RumiOrbMetal.metal` interpolates that transition. |
-| Unknown commands should be handled honestly | Implemented. Unknown or unsupported commands go through `CommandFlowCoordinator`, which asks the orb to say that it cannot do that yet instead of pretending success. |
-| User interruption should stop cleanly | Implemented for local capture and command flow. `MicrophoneService` observes `AVAudioSession.interruptionNotification`, stops capture on interruption start, and reports interruption end without auto-resuming after system interruptions. If the user backgrounds the app while listening, OrbSpeech pauses capture and resumes listening automatically when the app returns to foreground. |
-| Networked seam | Partially implemented. A `NetworkingResolver` stub exists in the resolver chain and models the boundary where production command understanding could move off-device. The message protocol and failure behavior are described below. |
-| Cost to run for long sessions | Not fully measured in-app. The current graphics path keeps per-pixel rendering and command-transition interpolation in Metal, while SwiftUI still submits time and uniforms once per `TimelineView` frame. Sustained heat/memory/battery measurement was left out to keep the implementation focused on the working loop. The measurement plan is documented below. |
-| How I worked with AI | Documented below. AI helped accelerate implementation and alternatives research, but runtime behavior, audio-session choices, model availability, and shader behavior still needed manual checking. |
+In the app:
+
+1. Tap `Prepare Components`.
+2. Tap `Talk`.
+3. Speak a short command.
+4. The orb speaks a response and performs the command when supported.
+
+## Supported Commands
+
+The current command set is intentionally small:
+
+- Move: `left`, `right`, `center`
+- Color: `blue`, `red`, `green`
+- Bounce
+- Cancel
+- Unknown or unsupported requests
+
+Unsupported commands are handled explicitly. The orb says `Sorry, I can't do that yet.` instead of silently failing or pretending the command worked.
 
 ## Architecture
 
-The final design separates the app into a SwiftUI view, a ViewModel, on-device audio/speech components, command resolution, and command execution.
+`ContentView` owns the UI only. It renders the Metal orb, status text, preparation button, and talk/stop button.
 
-### View
-
-`ContentView` contains only UI and UX rules.
-
-It renders:
-
-- The Metal orb through `RumiOrbView`
-- Status text from the ViewModel
-- A button to prepare on-device components
-- A button to start or stop interaction with the orb
-
-The view does not know how audio capture, transcription, command resolution, or orb commands work. It only observes ViewModel state and calls ViewModel methods when the user taps a button.
-
-### ViewModel
-
-`ContentViewModel` owns the interaction flow.
-
-It exposes state for the view to render:
-
-- Button availability
-- Status text
-- Whether the app is listening
-- The current `OrbState`
-- The current `OrbVisualState`
-- The active `OrbVisualTransition`, when a command animation is in flight
-
-It also exposes the user-facing actions:
-
-- `prepareOnDeviceComponents()`
-- `interact()`
-
-Internally, the ViewModel orchestrates the app components through protocols instead of concrete implementations:
+`ContentViewModel` owns the interaction flow and coordinates four protocol boundaries:
 
 - `MicrophoneCapturing`
 - `SpeechRecognizer`
 - `SpeechSynthesizing`
 - `CommandResolver`
 
-That keeps the ViewModel focused on product flow while allowing implementation details, fallbacks, and platform-specific behavior to live elsewhere.
+The app uses `Factory` for dependency registration. The app runtime registers real microphone, speech, synthesis, and resolver components. UI tests replace those dependencies with deterministic fixtures through debug-only registration.
 
-## On-Device Components
+## Audio And Interruptions
 
-The ViewModel initializes and coordinates three main on-device components.
+`MicrophoneService` uses `AVAudioEngine` to capture audio once and publish two outputs:
 
-### Microphone
+- normalized microphone level for orb animation
+- audio buffers for speech recognition
 
-`MicrophoneCapturing` captures audio once and publishes two outputs:
+The same capture path feeds both the visual feedback and the transcription pipeline.
 
-- `level`: a normalized voice level used to animate the orb while listening
-- `buffer`: the raw audio buffer forwarded to the speech recognizer
+`MicrophoneService` owns `AVAudioSession` while listening. It uses `.playAndRecord`, `.voiceChat`, speaker output, and deactivates the session with `.notifyOthersOnDeactivation` when capture stops.
 
-The same audio capture path feeds both the visual feedback and transcription pipeline.
+Audio interruptions are handled through `AVAudioSession.interruptionNotification`. When an interruption begins, capture stops, the current recognition stream is ended, command flow is reset, and the UI returns to an interrupted/ready state. OrbSpeech does not automatically resume after system audio interruptions.
 
-This component is also the right boundary for `AVAudioSession` ownership. When capture starts, `MicrophoneService` configures the shared audio session with `.playAndRecord`, uses `.voiceChat` mode, routes output to the speaker, and activates the session. In practice, that means OrbSpeech is asking the operating system for the microphone and audio session; if another app is playing audio, iOS may pause or duck that app depending on the active session policies.
+Foreground/background transitions are handled separately. If the app goes to the background while listening, it pauses capture and resumes listening when the app becomes active again. The app intentionally does not keep listening in the background.
 
-When capture stops, the service removes the audio tap, stops the engine, clears its handlers, and deactivates the session with `.notifyOthersOnDeactivation`. That tells the operating system that OrbSpeech is done with the audio resource, allowing interrupted audio from another app to resume when iOS decides it can.
+## Speech Recognition
 
-The interruption model belongs behind `MicrophoneCapturing` as well. If another app or system feature requests audio while OrbSpeech is using the microphone, iOS can interrupt the app's audio session and the capture pipeline must stop cleanly. `MicrophoneService` observes `AVAudioSession.interruptionNotification`, stops capture when an interruption begins, and notifies the ViewModel. The ViewModel then resets command flow, ends the current recognizer stream, and returns the UI to a state where the user can tap `interagir` again. When the interruption ends, the service reports whether iOS says the session may resume, but OrbSpeech does not restart listening automatically after system interruptions.
+`SpeechRecognizerFallbackOrchestrator` tries Apple Speech first. If that path is unavailable, it falls back to FluidAudio.
 
-Foreground/background transitions are handled separately from audio-session interruptions. If the user sends OrbSpeech to the background while it is actively listening, the ViewModel pauses capture and remembers that listening was active. When the app becomes active again, it automatically rebuilds the capture pipeline and resumes listening. The app intentionally does not listen while it is in the background.
+FluidAudio is started with `.system` input so OrbSpeech keeps one microphone/audio-session owner. The app captures audio through `MicrophoneCapturing` and forwards buffers into the recognizer.
 
-Keeping the microphone open in the background would require a different product and system contract: `UIBackgroundModes` with `audio`, a clear user-facing reason for background recording, careful privacy behavior, visible microphone usage, and more energy/performance validation. For this prototype, listening remains foreground-only.
+This keeps the speech-recognition boundary independent from FoundationModels availability. Devices without Apple's on-device language model can still use the speech path and then fall back to the bundled Core ML command classifier.
 
-### Speech Recognizer
+## Command Resolution And Cancellation
 
-`SpeechRecognizer` receives audio buffers and emits transcription results.
+Speech transcripts are segmented by `VoiceCommandCoordinator`. After one second without new words, the transcript is resolved into an `OrbCommand`.
 
-`SpeechRecognizerFallbackOrchestrator` decides which recognizer implementation should be used. Apple’s native speech stack is attempted first, and FluidAudio can be used as a fallback behind the same protocol.
+Resolution currently uses:
 
-This orchestration matters because the app should still work on devices that do not have Apple Intelligence or FoundationModels available, including older iPhones before the Apple Intelligence hardware cutoff. The speech-recognition path should not depend on those capabilities being present. Apple’s native speech recognizer is the first choice because it is integrated with the system, has low setup cost, and is the most natural default when on-device recognition is available for the current device and locale.
+1. `FoundationModelsCommandResolver`, when available
+2. `CoreMLModelCommandResolver`, using the bundled `OrbCommandClassifier.mlmodel`
+3. `NetworkingResolver`, a production boundary stub
 
-When that path is unavailable or not appropriate, the orchestrator falls back to FluidAudio. I chose FluidAudio for the prototype because it provides an app-owned on-device ASR path through CoreML, without requiring API keys or network transcription. It also hides a lot of the model plumbing that would otherwise be needed for a raw Hugging Face pipeline: model download, CoreML loading, sliding-window streaming, transcription updates, and local model cache. That made it a better fit for a two-day take-home implementation than wiring a lower-level Qwen3-ASR setup by hand.
+`FoundationModelsCommandResolver` uses `SystemLanguageModel(useCase: .contentTagging)`, a constrained `GenerationSchema`, greedy sampling, temperature `0`, and a short token cap. The bundled Core ML classifier covers the same small command space and is also expected to decline unsupported requests.
 
-One important integration detail is that FluidAudio is started with `stream.startStreaming(source: .system)` instead of `stream.startStreaming(source: .microphone)`. OrbSpeech already owns microphone capture through `MicrophoneCapturing` and `AVAudioSession`; letting FluidAudio open its own microphone path would create a second audio-capture owner competing for the same session. Using `.system` keeps FluidAudio in app-provided-buffer mode: `MicrophoneCapturing` captures the audio once, the ViewModel forwards each buffer to `SpeechRecognizer.stream(buffer:)`, and FluidAudio only performs ASR over those buffers.
+Cancellation is treated as a real cancellation path, not as a normal resolver fallback. `CommandResolverFallbackOrchestrator` rethrows `CancellationError`, and `CommandFlowCoordinator` cancels pending command work, stops speech, clears queued commands, cancels animation, and returns the orb to a recoverable state.
 
-The original research path considered Hugging Face models such as Qwen3-ASR CoreML/MLX variants. That direction is attractive for quality and multilingual support, but it has more moving parts: encoder and decoder assets, tokenizer handling, iOS 18+ `MLState`/KV-cache requirements for a full CoreML pipeline, memory constraints, and more device-specific validation. FluidAudio’s Parakeet TDT-CTC 110M CoreML path is smaller and more constrained, but it is much faster to validate end to end on device.
+Unknown results continue through the fallback chain and eventually become an explicit `.unknown` command. `.unknown` is handled by spoken refusal instead of a silent status update.
 
-The ViewModel subscribes to transcription updates through `startStreaming`. Once the microphone starts sending buffers to `stream(buffer:)`, the recognizer publishes text updates back through that callback.
+## Speech Output
 
-### Speech Synthesizer
+`OrbSpeechSynthesizer` wraps `AVSpeechSynthesizer`.
 
-`SpeechSynthesizing` is responsible for the orb’s spoken responses.
+The synthesizer chooses the best available `en-US` voice already installed on the device: premium first, then enhanced, then the default system voice. The app does not require an API key or a network speech service.
 
-The ViewModel switches the orb to `.speaking` while synthesized speech is playing. In Metal, `.speaking` intentionally renders like `.listening(0)`: visually calm, centered, and not reacting to microphone level.
+The ViewModel awaits speech before executing accepted commands, so the interaction order is:
 
-The synthesizer uses `AVSpeechSynthesizer` and picks the best available `en-US` voice already installed on the device: premium first, then enhanced, then the default system voice. The app does not download or require premium voices.
+1. understand command
+2. speak acknowledgement, cancellation, or refusal
+3. animate the orb when executable
 
-`speak(_:)` is exposed as an async method by wrapping `synthesizer.speak(utterance)` in a continuation. The continuation is resumed from `AVSpeechSynthesizerDelegate` when speech finishes or is cancelled. That means the ViewModel can await speech completion before moving the orb into `.acting`, so the orb executes the command only after it finishes talking.
+While speaking, the orb stays visually calm. In the shader, `.speaking` renders like a quiet listening state so the spoken response remains the focus.
 
-## Speech-To-Command Flow
+## Orb Rendering And Motion
 
-The ViewModel receives transcription updates from the speech recognizer and forwards them to `VoiceCommandCoordinator`. The coordinator segments accumulated ASR text and waits for one second without new words. That silence window is treated as the end of the user’s utterance.
+`RumiOrbView` hosts the Metal shader. SwiftUI provides the frame clock through `TimelineView`, and Metal renders the orb per pixel.
 
-After that one-second silence:
+The orb has explicit product states:
 
-1. `VoiceCommandCoordinator` sends the final text to `CommandResolver`.
-2. `CommandResolverFallbackOrchestrator` attempts to resolve the text into an `OrbCommand`.
-3. The resolver decides what command the text means, but it does not directly mutate the orb.
-4. `CommandFlowCoordinator` queues the resolved command and asks the ViewModel to speak accepted, cancelled, or unsupported responses.
-5. `CommandFlowCoordinator` then asks `OrbCommandExecutor` to apply executable commands.
+- `.idle`: waiting
+- `.listening(level)`: reacting to microphone level
+- `.thinking`: resolving the spoken command
+- `.speaking`: saying a response out loud
+- `.acting`: executing a command
+- `.settling`: returning from a transition
 
-The command resolver is isolated behind a protocol so different strategies can be composed without changing the ViewModel. The current design supports fallback orchestration across on-device model resolution and the networking boundary.
+Command execution emits an `OrbVisualTransition` containing start state, target state, start time, duration, and transient bounce. The shader receives those values as uniforms and interpolates movement, color, and bounce during rendering.
 
-Only a small set of commands is mapped right now. That was intentional: the priority was to validate the full speech-to-action loop quickly rather than spend the limited time expanding command coverage.
-
-## Orb Command Execution
-
-`OrbCommandExecutor` receives an `OrbCommand` and translates it into an `OrbVisualTransition`.
-
-`OrbVisualState` contains the orb’s visual properties, such as:
-
-- Position
-- Color
-- Bounce or other mapped effects
-
-`OrbVisualTransition` contains the start state, target state, start time, duration, and any transient bounce used for the command. The executor is the component that knows the semantic target of a command, but it no longer calculates every animation frame itself.
-
-The animation model avoids a separate command-side frame loop. Earlier versions used a `Task.sleep` loop on the `MainActor`, wrote observable visual state about 60 times per second, and ran that on top of a separate 60 Hz `TimelineView`, which meant command interpolation was CPU/MainActor work and was not display-synchronized.
-
-The current implementation uses `TimelineView` as the single frame-time source for the orb. SwiftUI still evaluates the `TimelineView` closure each frame and submits uniforms to the shader. Metal renders the orb per pixel and interpolates command transitions from start/target/time/duration uniforms. The command executor emits the transition once, waits for completion or cancellation, and returns a `CommandOutcome` when the action finishes or is interrupted.
-
-The executor currently implements only the few actions needed for rapid validation, such as movement, color, and bounce. More commands can be added by extending the resolver’s output space and mapping new actions into `OrbVisualState` transitions here.
-
-## Movement Choices
-
-The motion lab examples are intentionally broader than what fits in a short take-home. I kept the qualities that mattered most for validating the product loop:
-
-- The orb should always feel alive, even when idle.
-- Listening should react to real audio, not a fake timer.
-- Thinking should feel different from listening and acting.
-- Acting should move through a visible transition instead of snapping.
-- Speaking should be calm enough that the voice feels like the focus.
-
-I left out the deeper motion-lab experiments, complex particle systems, and additional transition verbs. Those would be interesting, but the challenge depends more on connecting audio, AI, speech, commands, and Metal into one coherent loop.
+The command executor does not write observable animation state every frame. It emits transitions and waits for completion or cancellation. Per-pixel rendering and command-transition interpolation happen in Metal; SwiftUI still submits time and uniforms each frame.
 
 ## Networked Seam
 
-The app currently resolves commands locally. In production, I would move sentence understanding to a server only behind a clear turn-based protocol. The phone should still own the microphone, local visual state, local cancellation, and the final decision of what the user sees during a dropped connection.
+OrbSpeech currently resolves commands on device. `NetworkingResolver` is kept as the production boundary where sentence understanding could move to a server later.
 
-One possible message order:
+In this revision the network resolver is a local stub and fails fast. That keeps the normal command path responsive: FoundationModels and Core ML get the first chance to resolve a command, and unsupported input eventually becomes an explicit `.unknown` command.
+
+A production live connection would need a turn-based protocol, for example:
 
 1. `turn.start`: phone sends `turnId`, locale, current orb state, and device capabilities.
 2. `audio.transcript.final`: phone sends the final transcript after local silence detection.
 3. `command.resolve.request`: phone asks the server to resolve the transcript into an `OrbCommand`.
 4. `command.resolve.result`: server returns an `OrbCommand` or an explicit `unknown`.
-5. `assistant.speech.delta`: if the server streams text for a spoken answer, it sends ordered chunks.
+5. `assistant.speech.delta`: server streams response text if the spoken answer is server-authored.
 6. `assistant.speech.done`: server marks the streamed answer complete.
-7. `turn.complete`: phone acknowledges that the local action finished or was skipped.
+7. `turn.complete`: phone reports that the local action finished or was skipped.
 
-If the user interrupts halfway through a streamed answer, the phone sends `turn.cancel` with the `turnId`, the last received sequence number, and a reason such as `user_interrupted`. The server owes back `turn.cancelled` and must stop producing deltas for that turn. The phone knows things the server may not know yet: whether the user tapped stop, whether iOS interrupted the microphone, whether the app lost audio focus, and whether the local orb animation has already been cancelled.
+If the user interrupts halfway through a streamed answer, the phone sends `turn.cancel` with the `turnId`, the last received sequence number, and a reason such as `user_interrupted`. The server owes back `turn.cancelled` and must stop producing deltas for that turn.
 
-If the connection drops mid-answer, the phone should stop trusting that turn, cancel local playback/animation, mark the turn as interrupted, and show a recoverable UI state. It should not keep acting on partial streamed intent unless the command had already been fully resolved and accepted locally.
+The phone knows local facts the server cannot know immediately: whether the user tapped stop, whether iOS interrupted the microphone, whether the app lost audio focus, whether local speech playback was cancelled, and whether the local orb animation had already started.
 
-In this prototype, `NetworkingResolver` is a local stub in the resolver chain. It waits briefly, fails, and lets the orchestrator fall back to on-device resolution. That proves the boundary exists, but the full streamed cancellation protocol above is documented rather than fully implemented.
+If the connection drops mid-answer, the phone should stop trusting that turn, cancel local playback/animation, mark the turn as interrupted, and show a recoverable state. It should not keep acting on partial streamed intent unless the command had already been fully resolved and accepted locally.
 
-## Orb States
+For manual cancellation testing, the network stub can be slowed down locally by adding a temporary delay inside `NetworkingResolver.resolve`:
 
-The orb has explicit states for the product flow:
+```swift
+try await Task.sleep(for: .seconds(3))
+```
 
-- `.idle`: waiting
-- `.listening(level)`: listening and reacting to microphone level
-- `.thinking`: processing or waiting
-- `.settling`: returning from a thinking transition
-- `.speaking`: speaking a response
-- `.acting`: executing a command
+With that local delay in place, say an unsupported command such as `I like barbecue`, then say `cancel` while the orb is still in the thinking state. This makes the network seam observable long enough to verify that pending resolver work is cancelled, command flow is reset, and the orb returns to a recoverable listening/idle state.
 
-The state controls the orb’s high-level behavior, while `OrbVisualState` controls its concrete visual details.
-
-## Current Status
-
-This is a complete end-to-end feature slice:
-
-- Microphone capture
-- Voice level animation
-- Speech recognition
-- One-second silence detection
-- Speech-to-command resolution
-- Spoken feedback
-- Orb command execution
-- Metal orb rendering
-
-The implementation includes the core behavior needed to validate the challenge without expanding into a larger production architecture.
+The delay is not part of normal app behavior. It is only a local verification hook for the cancellation path against a slow production-style seam.
 
 ## Tests
 
-The unit test target includes a Swift Testing regression test for the bundled Core ML command classifier. `OrbCommandClassifierTests` loads the compiled `OrbCommandClassifier.mlmodelc` from the host app bundle and verifies both supported commands and refusal cases.
+The project includes unit and UI coverage for behavior that can regress.
 
-The test intentionally covers examples that could break the product contract: valid movement and cancellation requests should still resolve to their expected labels, while ambiguous movement requests and unsupported color requests should resolve to `unknown`. That keeps the classifier from silently regressing into acting on commands such as `move`, `move top`, `go crimson`, or `can you become the colour of the ocean`.
+`OrbCommandClassifierTests` loads the bundled Core ML model and verifies supported commands plus refusal cases such as `move`, `move top`, `go crimson`, and `can you become the colour of the ocean`.
 
-I intentionally did not add detailed runtime instrumentation for model latency, memory, power, or token/model usage inside the app. That would be useful, but it would have taken time away from validating the primary interaction loop.
+`OrbSpeechUITests` covers:
+
+- the initial state before preparation
+- a deterministic `move left` flow using the bundled `move_left.wav` audio fixture
+
+The UI test launches with `ORB_UI_TEST_AUDIO_RESOURCE=move_left`, which loads `OrbSpeech/Resources/Audio/move_left.wav`. It also injects debug-only test doubles through launch environment values such as `ORB_UI_TEST_TRANSCRIPT`.
+
+Cancellation against a slow network seam is currently verified manually with the temporary `NetworkingResolver` delay described above. A later test pass should turn that into an automated resolver/coordinator test instead of relying on a source-level debug delay.
+
+## Build And Test
+
+From Xcode:
+
+1. Open `OrbSpeech.xcodeproj`.
+2. In the toolbar scheme picker, select the `OrbSpeech` scheme.
+3. In the run destination picker, select any installed iOS 26+ simulator for automated tests, such as `iPhone 17`.
+4. Build with `Product > Build` or `Cmd-B`.
+5. Run the test plan with `Product > Test` or `Cmd-U`.
+
+The `OrbSpeech` scheme is connected to `OrbSpeech.xctestplan`, so testing from Xcode runs the classifier unit test target and the UI test target. For manual microphone use, select a physical iOS device instead of the simulator.
+
+The test destination can be any installed iOS 26+ simulator. The current test plan includes the classifier unit test and the UI test target. Those tests are simulator-safe because the UI path injects a bundled audio fixture and test doubles instead of relying on live microphone input.
 
 ## Runtime Cost
 
-I did not complete a proper sustained-session measurement pass. For a production submission, I would run the app on device for a longer session and record:
+Detailed runtime benchmarks are intentionally not included in this revision.
 
-- Heat: Xcode thermal state and whether the device becomes noticeably warm.
-- Memory: Xcode memory gauge and Instruments allocations over time, looking for growth during long listening sessions.
-- Battery: Xcode energy report and Instruments Energy Log over a sustained listening and animation loop.
-- Frame rate: Core Animation FPS and GPU counters while the orb is idle, listening, thinking, speaking, and acting.
+The main runtime costs are expected to come from:
 
-The orb is rendered with Metal shaders, and command transitions are interpolated in the shader from start/target/time/duration uniforms. This is not a claim that the whole animation system is fully GPU-driven: SwiftUI's `TimelineView` still provides frame time from the main app layer and submits uniforms each frame. Command movement, color, and bounce are represented as transition uniforms rather than being calculated through per-frame observable state updates.
+- continuous microphone capture
+- speech recognition
+- command resolution through FoundationModels or Core ML
+- speech synthesis
+- continuous Metal rendering through `TimelineView`
 
-The main wins for holding 120fps for long sessions would come from keeping shader math bounded, reducing overdraw, limiting expensive noise layers, throttling state updates from the microphone, and avoiding unnecessary SwiftUI invalidations while audio is streaming.
+A follow-up benchmark pass should measure heat, memory, energy impact, and frame behavior on one real device over a sustained session.
 
-The expensive parts of the app are not only the shader. The microphone is always active while listening, the speech recognizer may run CoreML inference, and the command resolver may use FoundationModels or CoreML. A two-hour session would need budget across all three: audio, ML, and graphics.
+## Movement Choices
 
-## Tradeoffs
+The motion reference contains more ideas than fit this scope. I kept the parts that make the interaction legible:
 
-The current implementation keeps presentation state in the ViewModel and moves the command-processing flow into dedicated coordinators. `VoiceCommandCoordinator` owns transcript segmentation, debounce, resolver tasks, and command submission. `CommandFlowCoordinator` owns command queueing, spoken command responses, execution, refusal, and cancellation.
+- idle motion should feel alive without pulling attention
+- listening should react to real microphone input
+- thinking should read differently from listening and acting
+- acting should travel through a visible transition instead of snapping
+- speaking should stay calm enough for the voice to be the focus
 
-The ViewModel still adapts coordinator events into UI state such as `.thinking`, `.speaking`, `.acting`, and `.listening`. That keeps UIKit/SwiftUI-facing state local while leaving command semantics outside the presentation layer.
+I left out deeper particle systems, large motion vocabularies, and more elaborate surfacing/settling variants. Those would be interesting polish, but the product loop depends first on audio, speech, command resolution, spoken feedback, cancellation, and Metal rendering all working together.
 
-I would also add:
+## What I Would Do With A Week
 
-- More robust cancellation and interruption handling
-- Better command confidence reporting
-- Runtime metrics for latency and resource usage
-- A larger command model or larger on-device model strategy
-- More test coverage around orchestration and command execution
+With a week, I would spend the extra time on depth rather than surface area:
 
-## How I Worked With AI
+- add sustained runtime benchmarks on a real device
+- automate cancellation tests around a slow resolver
+- add an interruption-focused UI or integration test
+- capture command-resolution latency at each stage
+- add confidence handling and better unknown-command thresholds
+- make the network seam executable with a local fake server or streamed fixture
+- broaden the motion language only after the command loop is measured
 
-I used AI as a working pair, not as a replacement for making the product decisions. The useful part was speed: I could ask it to explore options, generate first passes, compare APIs, and then quickly throw away what did not fit the actual behavior I wanted.
+## What I Deliberately Did Not Build
 
-The main places where AI helped were:
+I did not build a server, because the challenge only needs the seam and the local cancellation behavior to be visible.
 
-- Researching the speech stack: Apple Speech, FoundationModels, CoreML, FluidAudio, MLX, llama.cpp, and Hugging Face options.
-- Getting a first Metal orb on screen quickly, then simplifying it toward the smaller Rumi orb used here.
-- Refactoring the prototype into protocol boundaries once the ViewModel started taking too much responsibility.
-- Thinking through fallback paths, especially Apple-first speech recognition and FluidAudio as the older-device fallback.
-- Drafting README sections once the architecture was stable enough to explain.
+I did not keep the microphone active in the background. That would require a different product/privacy contract, background audio mode, and more energy validation.
 
-The places where AI was less helpful were just as important:
+I did not expand the command set beyond movement, color, bounce, cancel, and unknown. A larger command space would need more classifier data, confidence handling, and more resolver tests.
 
-- It overcomplicated the orb state machine several times.
-- It made some speech synthesis and microphone suggestions that created awkward timing or concurrency behavior.
-- It treated some audio-session problems too abstractly; I had to bring it back to the concrete `AVAudioSession` ownership issue.
-- It was too optimistic about what could be implemented cleanly in the time available.
+I did not include sustained performance numbers in this revision. That belongs in the next benchmark-focused pass so the numbers can be measured and reported cleanly.
 
-The parts I checked by hand were the parts that matter for this prototype:
+## AI Use
 
-- Xcode builds after implementation changes.
-- Runtime logs for microphone capture, resolver selection, model availability, and speech synthesis.
-- Whether the orb actually moved through the intended user-facing states.
-- Whether the app remained honest when a model or command was unavailable.
-- Whether the final README described the project that actually exists, not the bigger version I would build with more time.
+I used AI as a working pair, mostly for speed and comparison:
 
-## Pushback
+- researching Apple Speech, FoundationModels, Core ML, FluidAudio, MLX, llama.cpp, and Hugging Face options
+- generating first passes of protocol boundaries and then simplifying them
+- comparing fallback approaches for speech recognition and command resolution
+- drafting README structure once the implementation was stable enough to explain
 
-One thing I think is wrong in the brief is the expected time box. Polished Metal motion, live microphone input, on-device speech recognition, model-driven command understanding, spoken output, a production networking seam, cancellation, and sustained performance measurement are not naturally a one-day exercise.
+The places where AI was less useful were the concrete audio-session and timing details. It was too willing to treat cancellation and interruption abstractly, so those paths needed manual checking against how the app actually behaves.
 
-If I were shaping this as a lead-level or production-quality challenge, I would make it closer to four focused working days. That would leave room not only to make the loop work, but to organize the code properly, validate cancellation paths, measure performance honestly, and clean up the edges.
+The parts I checked by hand were:
 
-For this submission, I worked on it in separate blocks adding up to roughly 16 hours. I am not as proud of the code organization as I would want to be for production, but given the time available I think the prototype lands the important part: the orb listens to real audio, understands a small set of spoken commands through model-backed components, speaks back, and animates through Metal.
+- Xcode build and test behavior
+- microphone capture logs
+- speech recognizer fallback selection
+- model availability and resolver fallback
+- spoken refusal behavior
+- UI state changes across listening, thinking, speaking, acting, and interruption
 
-## Why This Shape
+## One Thing Wrong In The Brief
 
-The challenge asks for more than transcription or parsing. The important part is that spoken intent becomes a command the orb can act on, and that the action feels native to the orb’s motion language.
+The one-day framing is the weakest part of the brief. A prototype can be built in that time, but the brief also asks for Metal motion, real microphone input, on-device speech, model-backed command resolution, spoken output, cancellation, interruption recovery, a production network seam, tests, and honest runtime measurements.
 
-This architecture keeps that split clear:
-
-- Speech components produce text
-- Command resolver converts text into intent
-- Command executor converts intent into orb behavior
-- Metal renders the orb
-- The ViewModel coordinates the product flow
-- The view stays declarative and UI-only
-
-Ultimately, these choices were made to preserve a good user experience: the orb should listen, speak, move, and recover from interruptions in a way that feels intentional instead of stitched together.
+The hard part is not sketching those pieces. The hard part is validating the edges: interruption timing, cancellation races, model refusal, thermal behavior, and sustained performance. Those are exactly the parts a lead should care about, and they benefit from more than one working day.

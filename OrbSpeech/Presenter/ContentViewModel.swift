@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Observation
+import Factory
 
 @MainActor
 @Observable
@@ -22,10 +23,10 @@ final class ContentViewModel {
     
     // MARK: - Private Properties
     
-    @ObservationIgnored private let microphoneCapturing: any MicrophoneCapturing
-    @ObservationIgnored private let speechRecognizer: any SpeechRecognizer
-    @ObservationIgnored private let speechSynthesizer: any SpeechSynthesizing
-    @ObservationIgnored private let commandResolver: any CommandResolver
+    @ObservationIgnored @Injected(\.microphoneCapturing) private var microphoneCapturing: any MicrophoneCapturing
+    @ObservationIgnored @Injected(\.speechRecognizer) private var speechRecognizer: any SpeechRecognizer
+    @ObservationIgnored @Injected(\.speechSynthesizer) private var speechSynthesizer: any SpeechSynthesizing
+    @ObservationIgnored @Injected(\.commandResolver) private var commandResolver: any CommandResolver
     
     @ObservationIgnored private var lastLevelUpdate = Date.distantPast
     @ObservationIgnored private var lastOrbLevel = 0.0
@@ -51,18 +52,6 @@ final class ContentViewModel {
     
     private var canPublishListeningLevel: Bool {
         isListening && !isListeningLevelUpdatesSuspended
-    }
-    
-    // MARK: - Initialization
-    
-    init(microphoneCapturing: any MicrophoneCapturing,
-         speechRecognizer: any SpeechRecognizer,
-         speechSynthesizer: any SpeechSynthesizing,
-         commandResolver: any CommandResolver) {
-        self.microphoneCapturing = microphoneCapturing
-        self.speechRecognizer = speechRecognizer
-        self.speechSynthesizer = speechSynthesizer
-        self.commandResolver = commandResolver
     }
     
     // MARK: - Internal Methods

@@ -1,0 +1,37 @@
+{
+  "configurations" : [
+    {
+      "id" : "49E8110F-BAE2-4969-B021-25972A48AA6A",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:OrbSpeech.xcodeproj",
+      "identifier" : "165D8CE8305C0BCD00352C4B",
+      "name" : "OrbSpeech"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:OrbSpeech.xcodeproj",
+        "identifier" : "165D8CF5305C0BCF00352C4B",
+        "name" : "OrbSpeechTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:OrbSpeech.xcodeproj",
+        "identifier" : "165D8CFF305C0BCF00352C4B",
+        "name" : "OrbSpeechUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

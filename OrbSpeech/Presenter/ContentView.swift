@@ -7,10 +7,7 @@ struct ContentView: View {
                                    green: 1,
                                    blue: 1)
     
-    @State private var viewModel = ContentViewModel(microphoneCapturing: MicrophoneService(),
-                                                    speechRecognizer: SpeechRecognizerFallbackOrchestrator(),
-                                                    speechSynthesizer: OrbSpeechSynthesizer(),
-                                                    commandResolver: CommandResolverFallbackOrchestrator())
+    let viewModel: ContentViewModel
     
     var body: some View {
         ZStack {
@@ -35,6 +32,7 @@ struct ContentView: View {
                     Text(viewModel.statusText)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.black.opacity(0.46))
+                        .accessibilityIdentifier("orb-status")
                     
                     Button {
                         Task {
@@ -93,5 +91,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: ContentViewModel())
 }

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		A20000000000000000000001 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000002 /* FluidAudio */; };
+		A20000000000000000000004 /* Factory in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000005 /* Factory */; };
+		A20000000000000000000006 /* Factory in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000007 /* Factory */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		161E66E8306D24C80006F3AD /* OrbSpeech.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = OrbSpeech.xctestplan; sourceTree = "<group>"; };
 		165D8CE9305C0BCD00352C4B /* OrbSpeech.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OrbSpeech.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		165D8CF6305C0BCF00352C4B /* OrbSpeechTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbSpeechTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		165D8D00305C0BCF00352C4B /* OrbSpeechUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbSpeechUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -57,6 +60,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000001 /* FluidAudio in Frameworks */,
+				A20000000000000000000004 /* Factory in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -64,6 +68,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A20000000000000000000006 /* Factory in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,6 +85,7 @@
 		165D8CE0305C0BCD00352C4B = {
 			isa = PBXGroup;
 			children = (
+				161E66E8306D24C80006F3AD /* OrbSpeech.xctestplan */,
 				165D8CEB305C0BCD00352C4B /* OrbSpeech */,
 				165D8CF9305C0BCF00352C4B /* OrbSpeechTests */,
 				165D8D03305C0BCF00352C4B /* OrbSpeechUITests */,
@@ -118,6 +124,7 @@
 			name = OrbSpeech;
 			packageProductDependencies = (
 				A20000000000000000000002 /* FluidAudio */,
+				A20000000000000000000005 /* Factory */,
 			);
 			productName = OrbSpeech;
 			productReference = 165D8CE9305C0BCD00352C4B /* OrbSpeech.app */;
@@ -141,6 +148,7 @@
 			);
 			name = OrbSpeechTests;
 			packageProductDependencies = (
+				A20000000000000000000007 /* Factory */,
 			);
 			productName = OrbSpeechTests;
 			productReference = 165D8CF6305C0BCF00352C4B /* OrbSpeechTests.xctest */;
@@ -203,6 +211,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A20000000000000000000003 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				A20000000000000000000008 /* XCRemoteSwiftPackageReference "Factory" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 165D8CEA305C0BCD00352C4B /* Products */;
@@ -603,6 +612,14 @@
 				minimumVersion = 0.12.4;
 			};
 		};
+		A20000000000000000000008 /* XCRemoteSwiftPackageReference "Factory" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/hmlongco/Factory.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.12;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -610,6 +627,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A20000000000000000000003 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		A20000000000000000000005 /* Factory */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A20000000000000000000008 /* XCRemoteSwiftPackageReference "Factory" */;
+			productName = Factory;
+		};
+		A20000000000000000000007 /* Factory */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A20000000000000000000008 /* XCRemoteSwiftPackageReference "Factory" */;
+			productName = Factory;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
