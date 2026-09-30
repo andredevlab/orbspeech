@@ -73,7 +73,9 @@ Foreground/background transitions are handled separately. If the app goes to the
 
 `SpeechRecognizerFallbackOrchestrator` tries Apple Speech first. If that path is unavailable, it falls back to FluidAudio.
 
-FluidAudio is started with `.system` input so OrbSpeech keeps one microphone/audio-session owner. The app captures audio through `MicrophoneCapturing` and forwards buffers into the recognizer.
+`FluidAudioSpeechRecognizer` uses FluidAudio's Parakeet TDT-CTC 110M Core ML ASR path instead of a hand-wired Qwen3-ASR pipeline. The goal is to use a streaming recognizer that is already packaged for Apple platforms and keep model loading, chunking, and inference behind one speech-recognition abstraction instead of adding a second custom inference stack.
+
+FluidAudio is started with `.system` input so OrbSpeech keeps one microphone/audio-session owner. The app captures audio through `MicrophoneCapturing` and forwards buffers into the recognizer. That avoids two components competing to configure `AVAudioSession` or capture from the microphone at the same time. It also makes the recognizer testable with file-backed buffers: the FluidAudio integration test reads `move_left.wav`, converts it into `AVAudioPCMBuffer` chunks, and feeds the same streaming path used by live microphone capture.
 
 This keeps the speech-recognition boundary independent from FoundationModels availability. Devices without Apple's on-device language model can still use the speech path and then fall back to the bundled Core ML command classifier.
 
@@ -169,6 +171,10 @@ The project includes unit and UI coverage for behavior that can regress.
 
 The UI test launches with `ORB_UI_TEST_AUDIO_RESOURCE=move_left`, which loads `OrbSpeech/Resources/Audio/move_left.wav`. It also injects debug-only test doubles through launch environment values such as `ORB_UI_TEST_TRANSCRIPT`.
 
+`FluidAudioRecognizerIntegrationTests` feeds the same `move_left.wav` fixture into the real `FluidAudioSpeechRecognizer` and verifies that the final normalized transcript contains `move left`.
+
+Known issue: this is an integration test, not a fast unit test. `FluidAudioSpeechRecognizer.startStreaming` prepares the recognizer, and the first run may download/cache FluidAudio model assets, emit Model Catalog or UnifiedAssetFramework logs, and take noticeably longer than the classifier or UI fixture tests.
+
 Cancellation against a slow network seam is currently verified manually with the temporary `NetworkingResolver` delay described above. A later test pass should turn that into an automated resolver/coordinator test instead of relying on a source-level debug delay.
 
 ## Build And Test
@@ -181,9 +187,11 @@ From Xcode:
 4. Build with `Product > Build` or `Cmd-B`.
 5. Run the test plan with `Product > Test` or `Cmd-U`.
 
-The `OrbSpeech` scheme is connected to `OrbSpeech.xctestplan`, so testing from Xcode runs the classifier unit test target and the UI test target. For manual microphone use, select a physical iOS device instead of the simulator.
+The `OrbSpeech` scheme is connected to `OrbSpeech.xctestplan`, so testing from Xcode runs the classifier unit test, the FluidAudio integration test, and the UI test target. For manual microphone use, select a physical iOS device instead of the simulator.
 
-The test destination can be any installed iOS 26+ simulator. The current test plan includes the classifier unit test and the UI test target. Those tests are simulator-safe because the UI path injects a bundled audio fixture and test doubles instead of relying on live microphone input.
+`OrbSpeech.xctestplan` only enables parallel execution for the unit/integration test target. The UI test target intentionally runs serially because it drives one simulator app session through accessibility, launch environment values, fixture audio injection, and app lifecycle state. Parallel UI runners can compete for foreground focus, simulator automation, and shared app state, which would make this coverage slower to trust even if it looked faster on paper.
+
+The test destination can be any installed iOS 26+ simulator. The automated tests are simulator-safe: the UI path injects a bundled audio fixture and test doubles instead of relying on live microphone input, and the FluidAudio integration test reads the bundled WAV fixture directly.
 
 ## Runtime Cost
 
