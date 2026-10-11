@@ -5,13 +5,14 @@ import Testing
 
 /// Characterization tests for color generalization in the on-device
 /// Foundation Model. These tests assert the *current observed behavior*,
-/// not the ideal behavior. They are designed to pass 100% and to fail
-/// when the model's behavior changes, signaling that the documented
-/// limitations in `docs/DISCOVERIES.md` may need to be re-evaluated.
+/// not the ideal behavior and not deterministic truth. A failure may mean
+/// the model changed, the runtime produced a different semantic
+/// approximation, or the documented limitation in `docs/DISCOVERIES.md`
+/// needs to be re-evaluated.
 ///
 /// The tests are organized into six groups:
 ///
-/// - 1a. Metaphors the model handles correctly.
+/// - 1a. Metaphors currently resolved to supported colors.
 /// - 1b. Metaphors the model does NOT handle (documented limitation).
 /// - 2a. Uncommon color words the model handles correctly.
 /// - 2b. Uncommon color words the model does NOT handle (documented limitation).
@@ -30,9 +31,9 @@ import Testing
 struct FoundationModelsCommandResolverColorGeneralizationTests {
     let sut = FoundationModelsCommandResolver()
     
-    // MARK: - Group 1a: Metaphors the model handles correctly
+    // MARK: - Group 1a: Metaphors currently resolved to supported colors
     
-    @Test("Metaphors the model handles correctly",
+    @Test("Metaphors currently resolved to supported colors",
           arguments: [("the color of the ocean", OrbColorTarget.blue.rawValue),
                       ("the color of the sky", OrbColorTarget.blue.rawValue),
                       ("the color of midnight", OrbColorTarget.blue.rawValue),

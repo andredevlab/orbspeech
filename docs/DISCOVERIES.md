@@ -353,6 +353,13 @@ unsupported colors and unrelated targets should resolve to `unknown`.
 The Foundation Model was probed to see how far it generalizes beyond
 explicit color words, and where it breaks. Three categories were tested:
 
+These results are semantic approximations observed during opt-in runs,
+not deterministic guarantees. Inputs such as `the color of fire` are not
+literal color commands; they ask the model to map an ambiguous concept
+into a closed color grammar. A later runtime can choose a different
+supported color for the same metaphor, which means these rows should be
+read as characterization evidence, not as certainty.
+
 ### Category 1: Metaphors for supported colors
 
 | Transcript | Expected | Observed |
