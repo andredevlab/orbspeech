@@ -74,10 +74,45 @@ command labels:
 
 ### Approach
 
-A single-property `GenerationSchema` constrained the output to the label
-enum via `guides: [.anyOf(...)]`. The system instructions described each
-label with examples. `GenerationOptions` used greedy sampling,
-`temperature: 0`, `maximumResponseTokens: 40`.
+The current resolver uses a dynamic `GenerationSchema` with two fields:
+`target` and `command`. The `command` field is constrained to the label
+enum via `.anyOf(...)`. The system instructions describe each label with
+examples. `GenerationOptions` uses greedy sampling, `temperature: 0`,
+`maximumResponseTokens: 40`.
+
+An intermediate implementation used an `@Generable` output type with the
+same two fields and the same `.anyOf(...)` command constraint. The four
+combinations of output shape and session lifetime were tested on an
+Apple Intelligence-enabled Mac with Xcode 26.3:
+
+| Output shape | Session lifetime | Semantic approximation | Color generalization |
+|---|---|---|---|
+| Dynamic `GenerationSchema` | Fresh session per `resolve` | Pass | Pass |
+| Dynamic `GenerationSchema` | Shared session | Pass | Pass |
+| `@Generable` | Fresh session per `resolve` | Not rerun in isolation | Fail |
+| `@Generable` | Shared session | Not rerun in isolation | Fail |
+
+The two `@Generable` runs failed in the same way in
+`FoundationModelsCommandResolverColorGeneralizationTests`: `ruby`
+returned `unknown` instead of `color_red`, and `go navy` returned
+`move_right` instead of the documented `color_blue` collapse. The two
+dynamic-schema runs passed. In this experiment, the output-shape API had
+a larger effect than session lifetime: shared session did not break the
+dynamic schema, and fresh sessions did not fix `@Generable`.
+
+This suggests `@Generable` is not merely an equivalent Swift spelling of
+the same schema. It changes the generation contract enough to alter how
+the model distributes probability across fields and labels. With the same
+model, instructions, prompt shape, command labels, and `.anyOf(...)`
+constraint, the semantic behavior only degraded when the output moved to
+`@Generable`. For this resolver, the dynamic `GenerationSchema` preserved
+the characterized command boundaries more reliably than the generated
+Swift output type.
+
+The `turn purple` / `go purple` difference therefore is not explained by
+session history alone. It is a semantic-boundary behavior under the
+current instructions, model, and test suite. These tests remain
+characterization evidence rather than CI-grade guarantees.
 
 ### Baseline results (first prompt)
 
@@ -264,35 +299,20 @@ example. The fix would require either (a) accepting the limitation and
 documenting it, or (b) removing `turn` from the supported verb
 vocabulary, which is not acceptable.
 
-### Session reuse
+### Session lifetime
 
-The resolver was changed to reuse a single `LanguageModelSession`
-across calls instead of creating a fresh one per `resolve`. The
-hypothesis was that session contamination might explain some of the
-observed behavior.
+The resolver creates a fresh `LanguageModelSession` for each `resolve`
+call. This matches the shape of the task: each voice transcript is a
+single-turn classification, not a multi-turn conversation.
 
-**Result: no observable difference.** `turn purple`, `go yellow`, and
-`go crimson` behaved identically before and after the change. The
-integration suite continued to pass 17/17, and the semantic
-approximation suite showed the same `turn purple -> color_blue` result.
+Keeping each classification in its own session avoids carrying transcript
+history from one command into the next. It also keeps the implementation
+aligned with the framework's intended split between instructions
+(developer-owned behavior) and prompts (one user input at a time).
 
-Two interpretations are possible, and the data does not distinguish
-between them:
-
-1. **Session contamination does not happen at this call volume.** The
-   test suite runs fewer than 30 calls in a session. The transcript
-   may not accumulate enough context to influence subsequent
-   classifications at this scale.
-
-2. **The model is robust enough that contamination never happens for
-   this task.** The classification is local enough - a single
-   transcript in, a single label out - that the session history does
-   not alter the output, regardless of how much accumulates.
-
-A dedicated contamination test would distinguish between these: for
-example, running `turn blue` followed by `turn purple` in the same
-session and comparing against `turn purple` alone in a fresh session.
-This test was not performed.
+`prewarm()` remains a best-effort availability and warm-up hook, but it
+does not imply that later classifications reuse the same conversational
+session.
 
 ### Decision
 

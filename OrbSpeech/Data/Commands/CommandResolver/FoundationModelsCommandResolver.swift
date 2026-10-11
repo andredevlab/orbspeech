@@ -9,7 +9,7 @@ import FoundationModels
 actor FoundationModelsCommandResolver: CommandResolver {
     private let model: SystemLanguageModel
     private let session: LanguageModelSession
-    private var isPrewarmed: Bool = false
+    private var isPrewarmed = false
     private nonisolated static let instructions =
         """
         You classify short English speech transcripts into exactly one command label.
@@ -62,6 +62,9 @@ actor FoundationModelsCommandResolver: CommandResolver {
     }
     
     func prewarm() throws {
+        // Keep one prewarmed session because the instructions never change, the resolver is a
+        // stable app component, and this is single-purpose single-turn classification: no history,
+        // no continuation, and no open-ended prompt. Reusing it avoids rebuilding setup and lowers latency.
         guard !isPrewarmed else { return }
 
         try ensureModelIsAvailable()
