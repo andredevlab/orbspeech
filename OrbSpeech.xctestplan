@@ -22,6 +22,15 @@
       "skippedTests" : {
         "suites" : [
           {
+            "name" : "FoundationModelsCommandResolverIntegrationTests"
+          },
+          {
+            "name" : "FoundationModelsCommandResolverSemanticApproximationTests"
+          },
+          {
+            "name" : "FoundationModelsCommandResolverColorGeneralizationTests"
+          },
+          {
             "name" : "BenchmarkTests"
           }
         ]
